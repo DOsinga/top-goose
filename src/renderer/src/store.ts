@@ -1,0 +1,336 @@
+import { create } from 'zustand'
+import type {
+  AuthState,
+  CachedRow,
+  GooseMessage,
+  GooseStreamEvent,
+  GooseToolCall,
+  IssueDetail,
+  PendingDraft,
+  RateBudget,
+} from '../../shared/types'
+
+const api = window.topGoose
+
+export type ComposerState = {
+  text: string
+  /** user has typed/edited since a draft last populated it */
+  dirty: boolean
+  /** a draft arrived while the composer was dirty; offered above it */
+  offeredDraft?: string
+}
+
+type GooseChat = {
+  messages: GooseMessage[]
+  busy: boolean
+  noWorkspace: boolean
+  error?: string
+  loaded: boolean
+}
+
+export type SidebarFilter = 'unread' | 'unreplied' | 'assigned'
+
+type State = {
+  auth: AuthState | null
+  rows: CachedRow[]
+  /** active filters combine with AND; none active shows everything */
+  sidebarFilters: SidebarFilter[]
+  selectedNodeId: string | null
+  issue: IssueDetail | null
+  issueLoading: boolean
+  issueError: string | null
+  composers: Record<string, ComposerState>
+  gooseChats: Record<string, GooseChat>
+  budget: RateBudget | null
+  view: 'main' | 'settings'
+
+  init: () => () => void
+  selectIssue: (nodeId: string) => Promise<void>
+  refreshIssue: () => Promise<void>
+  reply: () => Promise<void>
+  setStatus: (status: string) => Promise<void>
+  setSnooze: (date: string | null) => Promise<void>
+  setComposerText: (nodeId: string, text: string, dirty: boolean) => void
+  acceptOfferedDraft: (nodeId: string) => string | null
+  discardOfferedDraft: (nodeId: string) => void
+  promptGoose: (nodeId: string, text: string) => Promise<void>
+  cancelGoose: (nodeId: string) => void
+  setView: (view: 'main' | 'settings') => void
+  setAuth: (auth: AuthState) => void
+  toggleSidebarFilter: (filter: SidebarFilter) => void
+}
+
+const emptyComposer: ComposerState = { text: '', dirty: false }
+
+function sortRows(rows: CachedRow[]): CachedRow[] {
+  // most recent update first; snoozed rows sink until their date passes
+  const now = new Date().toISOString().slice(0, 10)
+  return [...rows].sort((a, b) => {
+    const aSnoozed = !!a.snoozedUntil && a.snoozedUntil > now
+    const bSnoozed = !!b.snoozedUntil && b.snoozedUntil > now
+    if (aSnoozed !== bSnoozed) return aSnoozed ? 1 : -1
+    return a.updatedAt < b.updatedAt ? 1 : -1
+  })
+}
+
+export const useStore = create<State>((set, get) => ({
+  auth: null,
+  rows: [],
+  sidebarFilters: [],
+  selectedNodeId: null,
+  issue: null,
+  issueLoading: false,
+  issueError: null,
+  composers: {},
+  gooseChats: {},
+  budget: null,
+  view: 'main',
+
+  init: () => {
+    void api.invoke('auth:state').then((auth) => {
+      set({ auth })
+      if (!auth.authenticated) set({ view: 'settings' })
+    })
+    void api.invoke('sidebar:rows').then((rows) => set({ rows: sortRows(rows) }))
+    void api.invoke('budget:get').then((budget) => set({ budget }))
+
+    // StrictMode mounts effects twice in dev; return a cleanup so listeners
+    // never stack (a doubled push:goose listener doubles every stream chunk)
+    const unsubscribers = [
+      api.on('push:sidebar', (rows) => set({ rows: sortRows(rows) })),
+      api.on('push:budget', (budget) => set({ budget })),
+      api.on('push:auth', (auth) => set({ auth })),
+
+      api.on('push:goose', (event: GooseStreamEvent) => {
+        const chats = get().gooseChats
+        const chat = chats[event.issueNodeId]
+        if (!chat) return
+        const next = applyStream(chat, event)
+        set({ gooseChats: { ...chats, [event.issueNodeId]: next } })
+      }),
+
+      api.on('push:draft', (draft: PendingDraft) => {
+        const { selectedNodeId } = get()
+        if (draft.issueNodeId !== selectedNodeId) return // waits as a pending draft on its row
+        void api.invoke('draft:take', draft.issueNodeId).then((taken) => {
+          if (taken) applyDraft(set, get, draft.issueNodeId, taken.text)
+        })
+      }),
+    ]
+    return () => unsubscribers.forEach((u) => u())
+  },
+
+  selectIssue: async (nodeId) => {
+    set({ selectedNodeId: nodeId, issueLoading: true, issueError: null, view: 'main' })
+    void api.invoke('issue:markRead', nodeId)
+
+    // open the goose session in parallel with the issue fetch
+    const chats = get().gooseChats
+    if (!chats[nodeId]?.loaded) {
+      set({
+        gooseChats: {
+          ...chats,
+          [nodeId]: { messages: [], busy: false, noWorkspace: false, loaded: false },
+        },
+      })
+      void api
+        .invoke('session:open', nodeId)
+        .then((view) => {
+          set((s) => ({
+            gooseChats: {
+              ...s.gooseChats,
+              [nodeId]: {
+                messages: view.messages,
+                busy: view.busy,
+                noWorkspace: view.noWorkspace,
+                error: view.error,
+                loaded: true,
+              },
+            },
+          }))
+        })
+        .catch((err: Error) => {
+          set((s) => ({
+            gooseChats: {
+              ...s.gooseChats,
+              [nodeId]: { messages: [], busy: false, noWorkspace: false, error: err.message, loaded: true },
+            },
+          }))
+        })
+    }
+
+    try {
+      const issue = await api.invoke('issue:open', nodeId)
+      if (get().selectedNodeId === nodeId) set({ issue, issueLoading: false })
+    } catch (err) {
+      if (get().selectedNodeId === nodeId) {
+        set({ issueError: err instanceof Error ? err.message : String(err), issueLoading: false })
+      }
+    }
+
+    // a draft that arrived while this issue was closed applies now
+    const pending = await api.invoke('draft:take', nodeId)
+    if (pending && get().selectedNodeId === nodeId) applyDraft(set, get, nodeId, pending.text)
+  },
+
+  refreshIssue: async () => {
+    const nodeId = get().selectedNodeId
+    if (!nodeId) return
+    const issue = await api.invoke('issue:open', nodeId)
+    if (get().selectedNodeId === nodeId) set({ issue })
+  },
+
+  reply: async () => {
+    const { selectedNodeId, composers, issue } = get()
+    if (!selectedNodeId || !issue) return
+    const composer = composers[selectedNodeId] ?? emptyComposer
+    const body = composer.text.trim()
+    if (!body) return
+    const comment = await api.invoke('issue:reply', selectedNodeId, body)
+    set({
+      composers: { ...get().composers, [selectedNodeId]: { ...emptyComposer } },
+      issue: { ...issue, comments: [...issue.comments, comment] },
+    })
+  },
+
+  setStatus: async (status) => {
+    const { selectedNodeId, issue } = get()
+    if (!selectedNodeId || !issue) return
+    set({ issue: { ...issue, workflowStatus: status } })
+    try {
+      await api.invoke('issue:setStatus', selectedNodeId, status)
+    } catch (err) {
+      set({ issue: { ...get().issue!, workflowStatus: issue.workflowStatus } })
+      throw err
+    }
+  },
+
+  setSnooze: async (date) => {
+    const { selectedNodeId, issue } = get()
+    if (!selectedNodeId || !issue) return
+    set({ issue: { ...issue, snoozedUntil: date ?? undefined } })
+    try {
+      await api.invoke('issue:setSnooze', selectedNodeId, date)
+    } catch (err) {
+      set({ issue: { ...get().issue!, snoozedUntil: issue.snoozedUntil } })
+      throw err
+    }
+  },
+
+  setComposerText: (nodeId, text, dirty) => {
+    const composers = get().composers
+    const current = composers[nodeId] ?? emptyComposer
+    set({ composers: { ...composers, [nodeId]: { ...current, text, dirty } } })
+  },
+
+  acceptOfferedDraft: (nodeId) => {
+    const composers = get().composers
+    const current = composers[nodeId]
+    if (!current?.offeredDraft) return null
+    const draft = current.offeredDraft
+    set({ composers: { ...composers, [nodeId]: { ...current, offeredDraft: undefined } } })
+    return draft
+  },
+
+  discardOfferedDraft: (nodeId) => {
+    const composers = get().composers
+    const current = composers[nodeId]
+    if (!current) return
+    set({ composers: { ...composers, [nodeId]: { ...current, offeredDraft: undefined } } })
+  },
+
+  promptGoose: async (nodeId, text) => {
+    const chats = get().gooseChats
+    const chat = chats[nodeId]
+    if (!chat || chat.busy) return
+    set({
+      gooseChats: {
+        ...chats,
+        [nodeId]: {
+          ...chat,
+          busy: true,
+          error: undefined,
+          messages: [...chat.messages, { role: 'user', id: `local-${Date.now()}`, text }],
+        },
+      },
+    })
+    try {
+      await api.invoke('session:prompt', nodeId, text)
+    } catch {
+      // the error also arrives via the push:goose 'error' event
+    } finally {
+      set((s) => ({
+        gooseChats: {
+          ...s.gooseChats,
+          [nodeId]: { ...s.gooseChats[nodeId], busy: false },
+        },
+      }))
+    }
+  },
+
+  cancelGoose: (nodeId) => {
+    void api.invoke('session:cancel', nodeId)
+  },
+
+  setView: (view) => set({ view }),
+  setAuth: (auth) => set({ auth }),
+  toggleSidebarFilter: (filter) =>
+    set((s) => ({
+      sidebarFilters: s.sidebarFilters.includes(filter)
+        ? s.sidebarFilters.filter((f) => f !== filter)
+        : [...s.sidebarFilters, filter],
+    })),
+}))
+
+function applyDraft(
+  set: (partial: Partial<State>) => void,
+  get: () => State,
+  nodeId: string,
+  text: string,
+): void {
+  const composers = get().composers
+  const current = composers[nodeId] ?? emptyComposer
+  if (!current.dirty) {
+    // empty, or holding an untouched previous draft: replace
+    set({ composers: { ...composers, [nodeId]: { text, dirty: false } } })
+  } else {
+    // never destroy typed text: offer above the composer instead
+    set({ composers: { ...composers, [nodeId]: { ...current, offeredDraft: text } } })
+  }
+}
+
+function applyStream(chat: GooseChat, event: GooseStreamEvent): GooseChat {
+  switch (event.type) {
+    case 'agent-text': {
+      const messages = [...chat.messages]
+      const last = messages[messages.length - 1]
+      if (last?.role === 'agent' && last.id === event.messageId) {
+        messages[messages.length - 1] = { ...last, text: last.text + event.delta }
+      } else {
+        messages.push({ role: 'agent', id: event.messageId, text: event.delta, toolCalls: [] })
+      }
+      return { ...chat, messages }
+    }
+    case 'tool-call': {
+      const messages = [...chat.messages]
+      let target = messages[messages.length - 1]
+      if (target?.role !== 'agent') {
+        target = { role: 'agent', id: event.messageId, text: '', toolCalls: [] }
+        messages.push(target)
+      }
+      const agent = target as Extract<GooseMessage, { role: 'agent' }>
+      const calls: GooseToolCall[] = [...agent.toolCalls]
+      const idx = calls.findIndex((c) => c.toolCallId === event.call.toolCallId)
+      if (idx >= 0) calls[idx] = event.call
+      else calls.push(event.call)
+      messages[messages.length - 1] = { ...agent, toolCalls: calls }
+      return { ...chat, messages }
+    }
+    case 'turn-end':
+      return { ...chat, busy: false }
+    case 'error':
+      return { ...chat, busy: false, error: event.message }
+    default:
+      return chat
+  }
+}
