@@ -148,6 +148,14 @@ export function updateCachedRow(nodeId: string, patch: Partial<CachedRow>): Cach
   return updated
 }
 
+export function removeCachedRow(nodeId: string): void {
+  sidebarCache().update((c) => {
+    const next = { ...c.rows }
+    delete next[nodeId]
+    return { rows: next }
+  })
+}
+
 /** Remove rows not in the keep set (reconciliation dropped them). */
 export function pruneCachedRows(keep: Set<string>): void {
   sidebarCache().update((c) => {

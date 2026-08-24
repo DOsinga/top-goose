@@ -53,7 +53,7 @@ export function Sidebar(): React.JSX.Element {
         {visible.length === 0 && (
           <div className="p-4 text-sm text-gray-500">
             {rows.length === 0
-              ? 'No conversations yet. Issues involving you appear here as activity arrives.'
+              ? 'No open issues in this repository.'
               : 'Nothing matches the active filters.'}
           </div>
         )}

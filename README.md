@@ -4,7 +4,7 @@ GitHub issues as chat conversations, with a private [Goose](https://github.com/b
 
 Issue triage usually means a browser tab per issue and no help from your agent. Top Goose turns a repository's issues into something closer to Slack:
 
-- **Left — channels:** issues involving you, sorted by activity, with unread counts, board status, and filter pills (`unread` / `unreplied` / `assigned`).
+- **Left — channels:** every open issue in the repository, sorted by activity, with unread counts, board status, and filter pills (`unread` / `unreplied` / `assigned`).
 - **Center — the conversation:** the GitHub discussion, a reply composer, and in-place editing of the Projects V2 `Status` and snooze date.
 - **Right — the goose:** a private Goose conversation scoped to the current issue, running against your local clone. Nothing there touches GitHub unless *you* press send: when Goose drafts a reply it lands in your composer for review, never on the issue.
 
@@ -53,7 +53,7 @@ Optionally pick a Projects V2 board plus its `Status` and snooze (date) fields �
 ## How it talks to GitHub
 
 - Change detection polls `/notifications` with `If-None-Match`; an idle repository costs zero rate limit.
-- Reconciliation runs a GraphQL search (`involves:@me` in the configured repo) every 5 minutes to establish the sidebar set.
+- Reconciliation fetches every open issue in the configured repository every 5 minutes to establish the sidebar set.
 - Hydration is one batched GraphQL query over only the issues that changed. Every query carries `rateLimit { cost remaining }`; below a floor of remaining points the app degrades to cached rows instead of querying.
 
 ## How it talks to Goose
