@@ -7,8 +7,6 @@ import { registerIpc } from './ipc'
 import { startDraftServer, stopDraftServer } from './mcp/draftServer'
 import { flushAllStores } from './store'
 
-app.setName('Top Goose')
-
 function appIconPath(): string {
   return app.isPackaged
     ? path.join(app.getAppPath(), 'out/renderer/top-goose.png')
