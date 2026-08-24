@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { coreTeam } from '../../../shared/coreTeam'
 import type { IssueDetail } from '../../../shared/types'
 import { useStore } from '../store'
 import { Markdown } from './Markdown'
@@ -32,6 +33,8 @@ export function IssuePane(): React.JSX.Element {
 function IssueHeader({ issue }: { issue: IssueDetail }): React.JSX.Element {
   const setStatus = useStore((s) => s.setStatus)
   const setSnooze = useStore((s) => s.setSnooze)
+  const setAssignee = useStore((s) => s.setAssignee)
+  const assigneeSaving = useStore((s) => s.assigneeSaving)
   const setView = useStore((s) => s.setView)
   const url = `https://github.com/${issue.repo}/issues/${issue.issueNumber}`
 
@@ -81,7 +84,30 @@ function IssueHeader({ issue }: { issue: IssueDetail }): React.JSX.Element {
           {issue.repo}#{issue.issueNumber}
         </a>
         <span>by {issue.author}</span>
-        {issue.assignees.length > 0 && <span>→ {issue.assignees.join(', ')}</span>}
+        <span className="flex items-center gap-1">
+          <label htmlFor="issue-assignee" className="text-gray-400">
+            assigned
+          </label>
+          <select
+            id="issue-assignee"
+            className="cursor-pointer rounded border border-gray-300 bg-white px-1 py-px text-[11px] disabled:opacity-50"
+            value={assigneeValue(issue.assignees)}
+            disabled={assigneeSaving}
+            onChange={(e) => void setAssignee(e.target.value || null)}
+          >
+            {assigneeValue(issue.assignees) === '__current__' && (
+              <option value="__current__" disabled>
+                {issue.assignees.join(', ')}
+              </option>
+            )}
+            <option value="">Unassigned</option>
+            {coreTeam.map((member) => (
+              <option key={member.github} value={member.github}>
+                {member.name} (@{member.github})
+              </option>
+            ))}
+          </select>
+        </span>
         {issue.labels.map((l) => (
           <span
             key={l.name}
@@ -107,6 +133,14 @@ function IssueHeader({ issue }: { issue: IssueDetail }): React.JSX.Element {
       </div>
     </div>
   )
+}
+
+function assigneeValue(assignees: string[]): string {
+  if (assignees.length === 0) return ''
+  if (assignees.length === 1 && coreTeam.some((member) => member.github === assignees[0])) {
+    return assignees[0]
+  }
+  return '__current__'
 }
 
 function Transcript({ issue }: { issue: IssueDetail }): React.JSX.Element {

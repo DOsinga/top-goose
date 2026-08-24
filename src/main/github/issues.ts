@@ -104,3 +104,15 @@ export async function postComment(repo: string, issueNumber: number, body: strin
   if (!created) throw new Error('comment creation returned no body')
   return toComment(created)
 }
+
+export async function setIssueAssignee(
+  repo: string,
+  issueNumber: number,
+  login: string | null,
+): Promise<string[]> {
+  const issue = await restSend<RestIssue>('PATCH', `/repos/${repo}/issues/${issueNumber}`, {
+    assignees: login ? [login] : [],
+  })
+  if (!issue) throw new Error('assignee update returned no body')
+  return issue.assignees.map((assignee) => assignee.login)
+}

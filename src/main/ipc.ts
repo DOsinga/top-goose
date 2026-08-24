@@ -8,7 +8,7 @@ import type { PendingDraft, RateBudget } from '../shared/types'
 import * as activity from './activity'
 import { authState, setPat, signOut } from './github/auth'
 import { onBudgetChange, getBudget } from './github/client'
-import { fetchIssueDetail, postComment } from './github/issues'
+import { fetchIssueDetail, postComment, setIssueAssignee } from './github/issues'
 import { listFields, listProjects, setIssueSnooze, setIssueStatus } from './github/projects'
 import { findGoose, invalidateGooseInfo } from './goose/discover'
 import {
@@ -151,6 +151,13 @@ export function registerIpc(): void {
       updatedAt: comment.createdAt,
     })
     return comment
+  })
+  handle('issue:setAssignee', async (nodeId, login) => {
+    const row = getCachedRow(nodeId)
+    if (!row) throw new Error('unknown issue')
+    const assignees = await setIssueAssignee(row.repo, row.issueNumber, login)
+    activity.applyLocalEdit(nodeId, { assignees })
+    return assignees
   })
   handle('issue:setStatus', async (nodeId, status) => {
     const row = getCachedRow(nodeId)

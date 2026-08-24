@@ -46,6 +46,7 @@ beforeEach(() => {
     issue: null,
     issueLoading: false,
     issueError: null,
+    assigneeSaving: false,
     composers: {},
     gooseChats: {},
     view: 'main',
@@ -157,5 +158,29 @@ describe('GitHub replies', () => {
     await Promise.all([first, second])
     expect(useStore.getState().issue?.comments).toHaveLength(1)
     expect(useStore.getState().composers.B?.text).toBe('')
+  })
+})
+
+describe('GitHub assignees', () => {
+  it('rolls back the displayed assignee when GitHub rejects the change', async () => {
+    invoke.mockImplementation((channel: string) => {
+      if (channel === 'issue:setAssignee') return Promise.reject(new Error('not assignable'))
+      return Promise.resolve()
+    })
+    useStore.setState({
+      selectedNodeId: 'B',
+      issue: { ...issue('B', 2), assignees: ['DOsinga'] },
+    })
+
+    const changing = useStore.getState().setAssignee('jbg')
+    expect(useStore.getState().issue?.assignees).toEqual(['jbg'])
+    expect(useStore.getState().assigneeSaving).toBe(true)
+    expect(invoke).toHaveBeenCalledWith('issue:setAssignee', 'B', 'jbg')
+
+    await changing
+
+    expect(useStore.getState().issue?.assignees).toEqual(['DOsinga'])
+    expect(useStore.getState().assigneeSaving).toBe(false)
+    expect(useStore.getState().issueError).toBe('not assignable')
   })
 })
