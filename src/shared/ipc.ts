@@ -53,6 +53,7 @@ export type InvokeMap = {
   'session:open': (issueNodeId: string) => GooseSessionView
   'session:prompt': (issueNodeId: string, text: string) => void
   'session:cancel': (issueNodeId: string) => void
+  'session:permission': (issueNodeId: string, requestId: number, allow: boolean) => void
 
   // drafts
   'draft:take': (issueNodeId: string) => PendingDraft | null
@@ -74,6 +75,7 @@ export type PushMap = {
   'push:draft': (draft: PendingDraft) => void
   'push:auth': (state: AuthState) => void
   'push:budget': (budget: RateBudget) => void
+  'push:reset': () => void
 }
 
 export type InvokeChannel = keyof InvokeMap

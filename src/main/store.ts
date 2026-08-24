@@ -76,6 +76,7 @@ export type IssueSession = {
   lastSyncedIssueUpdatedAt?: string
   lastSyncedCommentCount?: number
   lastSyncedBodyUpdatedAt?: string
+  lastSyncedHistoryHash?: string
   worktreePath?: string
 }
 
@@ -89,13 +90,24 @@ function sessionStore(): JsonFile<SessionMap> {
 }
 
 export function getIssueSession(issueNodeId: string): IssueSession | undefined {
-  return sessionStore().get().sessions[issueNodeId]
+  const account = getAuthMeta().login
+  if (!account) return undefined
+  const stored = sessionStore().get().sessions
+  const session = stored[issueSessionKey('github.com', account, issueNodeId)]
+  if (session) return session
+
+  const legacy = stored[issueNodeId]
+  return legacy?.host === 'github.com' && legacy.account === account ? legacy : undefined
 }
 
 export function saveIssueSession(session: IssueSession): void {
   sessionStore().update((s) => ({
-    sessions: { ...s.sessions, [session.issueNodeId]: session },
+    sessions: { ...s.sessions, [issueSessionKey(session.host, session.account, session.issueNodeId)]: session },
   }))
+}
+
+export function issueSessionKey(host: string, account: string, issueNodeId: string): string {
+  return `${host.toLowerCase()}:${account.toLowerCase()}:${issueNodeId}`
 }
 
 // ---------- Sidebar cache ----------
@@ -147,6 +159,10 @@ export function pruneCachedRows(keep: Set<string>): void {
   })
 }
 
+export function clearCachedRows(): void {
+  sidebarCache().set({ rows: {} })
+}
+
 // ---------- Pending drafts (in-memory; a draft does not survive restart) ----------
 
 const pendingDrafts = new Map<string, PendingDraft>()
@@ -163,6 +179,10 @@ export function takePendingDraft(issueNodeId: string): PendingDraft | null {
 
 export function hasPendingDraft(issueNodeId: string): boolean {
   return pendingDrafts.has(issueNodeId)
+}
+
+export function clearPendingDrafts(): void {
+  pendingDrafts.clear()
 }
 
 export function flushAllStores(): void {

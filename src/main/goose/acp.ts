@@ -58,19 +58,35 @@ export type McpHttpServer = {
 
 export type SessionUpdateHandler = (sessionId: string, update: SessionUpdate) => void
 
+export type AcpPermissionRequest = {
+  requestId: number
+  sessionId: string
+  title: string
+  detail?: string
+}
+
+export type PermissionRequestHandler = (request: AcpPermissionRequest) => void
+
 const PERMISSION_ALLOW = { outcome: { outcome: 'selected', optionId: 'allow_once' } }
+const PERMISSION_DENY = { outcome: { outcome: 'selected', optionId: 'reject_once' } }
 
 export class AcpClient {
   private child: ChildProcess | null = null
   private nextId = 1
   private pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>()
   private updateHandler: SessionUpdateHandler | null = null
+  private permissionHandler: PermissionRequestHandler | null = null
+  private pendingPermissions = new Map<number, string>()
   private startPromise: Promise<void> | null = null
   /** while loading a session, its replayed history accumulates here */
   private replayBuffers = new Map<string, SessionUpdate[]>()
 
   onSessionUpdate(handler: SessionUpdateHandler): void {
     this.updateHandler = handler
+  }
+
+  onPermissionRequest(handler: PermissionRequestHandler): void {
+    this.permissionHandler = handler
   }
 
   async ensureStarted(): Promise<void> {
@@ -87,8 +103,7 @@ export class AcpClient {
       stdio: ['pipe', 'pipe', 'pipe'],
       env: {
         ...process.env,
-        // no approval prompts: tool calls run and are displayed after the fact
-        GOOSE_MODE: 'auto',
+        GOOSE_MODE: 'smart_approve',
       },
     })
     this.child = child
@@ -111,9 +126,11 @@ export class AcpClient {
 
     child.on('exit', (code) => {
       console.warn(`[goose-acp] exited with code ${code}`)
+      if (this.child !== child) return
       const err = new Error(`goose acp exited (code ${code})`)
       for (const p of this.pending.values()) p.reject(err)
       this.pending.clear()
+      this.pendingPermissions.clear()
       this.child = null
     })
 
@@ -139,10 +156,22 @@ export class AcpClient {
       else pending.resolve(msg.result)
       return
     }
-    // agent -> client request: only permission requests need an answer, and
-    // sessions run in auto mode so any that arrive are auto-approved
     if (msg.id !== undefined && msg.method === 'session/request_permission') {
-      this.respond(msg.id, PERMISSION_ALLOW)
+      const params = msg.params as {
+        sessionId?: string
+        toolCall?: { title?: string; rawInput?: unknown }
+      }
+      if (!params.sessionId || !this.permissionHandler) {
+        this.respond(msg.id, PERMISSION_DENY)
+        return
+      }
+      this.pendingPermissions.set(msg.id, params.sessionId)
+      this.permissionHandler({
+        requestId: msg.id,
+        sessionId: params.sessionId,
+        title: params.toolCall?.title ?? 'Allow this tool call?',
+        detail: params.toolCall?.rawInput ? JSON.stringify(params.toolCall.rawInput).slice(0, 2_000) : undefined,
+      })
       return
     }
     if (msg.id !== undefined && msg.method) {
@@ -250,7 +279,16 @@ export class AcpClient {
   }
 
   cancel(sessionId: string): void {
+    for (const [requestId, pendingSessionId] of this.pendingPermissions) {
+      if (pendingSessionId === sessionId) this.respondPermission(sessionId, requestId, false)
+    }
     this.notify('session/cancel', { sessionId })
+  }
+
+  respondPermission(sessionId: string, requestId: number, allow: boolean): void {
+    if (this.pendingPermissions.get(requestId) !== sessionId) throw new Error('unknown permission request')
+    this.pendingPermissions.delete(requestId)
+    this.respond(requestId, allow ? PERMISSION_ALLOW : PERMISSION_DENY)
   }
 
   /**
@@ -291,8 +329,13 @@ export class AcpClient {
   }
 
   shutdown(): void {
-    this.child?.kill()
+    const child = this.child
     this.child = null
+    const err = new Error('goose acp stopped')
+    for (const pending of this.pending.values()) pending.reject(err)
+    this.pending.clear()
+    this.pendingPermissions.clear()
+    child?.kill()
   }
 }
 

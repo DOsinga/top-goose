@@ -1,4 +1,4 @@
-import os from 'node:os'
+import { existsSync } from 'node:fs'
 import type {
   GooseMessage,
   GooseSessionView,
@@ -16,7 +16,7 @@ import {
   type IssueSession,
 } from '../store'
 import { acp, type SessionUpdate } from './acp'
-import { buildContext, CONTEXT_OPEN } from './contextSync'
+import { buildContext, promptWithContext, visibleUserMessage } from './contextSync'
 import { ensureWorktree } from './worktrees'
 
 /**
@@ -39,6 +39,7 @@ type LiveSession = {
 
 const liveByIssue = new Map<string, LiveSession>()
 const issueBySessionId = new Map<string, string>()
+const openingByIssue = new Map<string, Promise<GooseSessionView>>()
 
 let streamListener: ((event: GooseStreamEvent) => void) | null = null
 
@@ -60,6 +61,23 @@ acp.onSessionUpdate((sessionId, update) => {
   applyUpdate(live, update, true)
 })
 
+acp.onPermissionRequest((request) => {
+  const issueNodeId = issueBySessionId.get(request.sessionId)
+  if (!issueNodeId) {
+    acp.respondPermission(request.sessionId, request.requestId, false)
+    return
+  }
+  emit({
+    type: 'permission-request',
+    issueNodeId,
+    request: {
+      requestId: request.requestId,
+      title: request.title,
+      detail: request.detail,
+    },
+  })
+})
+
 function applyUpdate(live: LiveSession, update: SessionUpdate, notify: boolean): void {
   switch (update.sessionUpdate) {
     case 'agent_message_chunk': {
@@ -79,16 +97,11 @@ function applyUpdate(live: LiveSession, update: SessionUpdate, notify: boolean):
       break
     }
     case 'user_message_chunk': {
-      // replay only: live user messages are added locally when prompting.
-      // context blocks we injected are agent context, not conversation.
       if (notify) return
       const content = update.content as { type: string; text?: string }
       if (content.type !== 'text' || !content.text) return
-      if (content.text.startsWith(CONTEXT_OPEN)) return
       const messageId = (update as { messageId?: string }).messageId ?? `user-${live.messages.length}`
-      const prev = live.messages[live.messages.length - 1]
-      if (prev?.role === 'user' && prev.id === messageId) prev.text += content.text
-      else live.messages.push({ role: 'user', id: messageId, text: content.text })
+      appendReplayUser(live, messageId, content.text)
       break
     }
     case 'tool_call': {
@@ -123,6 +136,37 @@ function applyUpdate(live: LiveSession, update: SessionUpdate, notify: boolean):
     default:
       break
   }
+}
+
+function appendReplayUser(live: LiveSession, messageId: string, prompt: string): void {
+  live.currentAgent = undefined
+  live.messages.push({ role: 'user', id: messageId, text: visibleUserMessage(prompt) })
+}
+
+function applyReplay(live: LiveSession, updates: SessionUpdate[]): void {
+  let userId: string | undefined
+  let userPrompt = ''
+
+  const flushUser = (): void => {
+    if (userId) appendReplayUser(live, userId, userPrompt)
+    userId = undefined
+    userPrompt = ''
+  }
+
+  for (const update of updates) {
+    if (update.sessionUpdate === 'user_message_chunk') {
+      const content = update.content as { type: string; text?: string }
+      if (content.type !== 'text' || !content.text) continue
+      const messageId = (update as { messageId?: string }).messageId ?? userId ?? `user-${live.messages.length}`
+      if (userId && userId !== messageId) flushUser()
+      userId = messageId
+      userPrompt += content.text
+      continue
+    }
+    flushUser()
+    applyUpdate(live, update, false)
+  }
+  flushUser()
 }
 
 function ensureAgentMessage(live: LiveSession): { id: string; text: string; toolCalls: GooseToolCall[] } {
@@ -161,7 +205,15 @@ async function attachDraftServer(sessionId: string, issueNodeId: string, cwd: st
 
 // ---------- opening (no agent turn) ----------
 
-export async function openIssueSession(issueNodeId: string): Promise<GooseSessionView> {
+export function openIssueSession(issueNodeId: string): Promise<GooseSessionView> {
+  const opening = openingByIssue.get(issueNodeId)
+  if (opening) return opening
+  const next = openIssueSessionInner(issueNodeId).finally(() => openingByIssue.delete(issueNodeId))
+  openingByIssue.set(issueNodeId, next)
+  return next
+}
+
+async function openIssueSessionInner(issueNodeId: string): Promise<GooseSessionView> {
   const row = getCachedRow(issueNodeId)
   const config = row ? repoConfig(row.repo) : undefined
   const noWorkspace = !config?.path
@@ -183,12 +235,14 @@ export async function openIssueSession(issueNodeId: string): Promise<GooseSessio
   try {
     const cwd = await sessionCwd(mapping)
     const replay = await acp.loadSession(mapping.sessionId, cwd, [])
-    for (const update of replay) applyUpdate(live, update, false)
+    applyReplay(live, replay)
     live.currentAgent = undefined
     await attachDraftServer(mapping.sessionId, issueNodeId, cwd)
     await applyInstructions(mapping.sessionId, mapping.repo)
   } catch (err) {
-    return { ...view(live, noWorkspace), error: `Could not resume Goose session: ${message(err)}` }
+    liveByIssue.delete(issueNodeId)
+    issueBySessionId.delete(mapping.sessionId)
+    throw new Error(`Could not resume Goose session: ${message(err)}`)
   }
   return view(live, noWorkspace)
 }
@@ -210,6 +264,8 @@ function message(err: unknown): string {
 // ---------- prompting ----------
 
 export async function promptIssue(issueNodeId: string, text: string): Promise<void> {
+  const opening = openingByIssue.get(issueNodeId)
+  if (opening) await opening
   const live = liveByIssue.get(issueNodeId)
   if (!live) throw new Error('open the issue first')
   if (live.busy) throw new Error('Goose is already working on this issue')
@@ -221,9 +277,7 @@ export async function promptIssue(issueNodeId: string, text: string): Promise<vo
     const isFirstTurn = mapping.lastSyncedIssueUpdatedAt === undefined
     const sync = await buildContext(mapping, isFirstTurn)
 
-    const prompt = sync.contextBlock
-      ? `${sync.contextBlock}\n\nThe user said:\n\n<user-message>\n${text}\n</user-message>`
-      : text
+    const prompt = sync.contextBlock ? promptWithContext(sync.contextBlock, text) : text
 
     live.currentAgent = undefined
     const result = await acp.prompt(mapping.sessionId, prompt)
@@ -245,6 +299,12 @@ export function cancelIssue(issueNodeId: string): void {
   if (live?.sessionId) acp.cancel(live.sessionId)
 }
 
+export function respondIssuePermission(issueNodeId: string, requestId: number, allow: boolean): void {
+  const live = liveByIssue.get(issueNodeId)
+  if (!live?.sessionId) throw new Error('Goose session is not open')
+  acp.respondPermission(live.sessionId, requestId, allow)
+}
+
 // ---------- session creation ----------
 
 async function ensureSession(issueNodeId: string, live: LiveSession): Promise<IssueSession> {
@@ -259,21 +319,23 @@ async function ensureSession(issueNodeId: string, live: LiveSession): Promise<Is
     issueBySessionId.set(existing.sessionId, issueNodeId)
     live.sessionId = existing.sessionId
     const existingCwd = await sessionCwd(existing)
-    await acp.loadSession(existing.sessionId, existingCwd, [])
+    const replay = await acp.loadSession(existing.sessionId, existingCwd, [])
+    applyReplay(live, replay)
+    live.currentAgent = undefined
     await attachDraftServer(existing.sessionId, issueNodeId, existingCwd)
     await applyInstructions(existing.sessionId, existing.repo)
     return existing
   }
 
   const config = repoConfig(row.repo)
-  let cwd = os.homedir()
+  if (!config?.path) {
+    throw new Error(`Configure a local clone for ${row.repo} before asking Goose`)
+  }
+  let cwd = config.path
   let worktreePath: string | undefined
-  if (config?.path) {
-    cwd = config.path
-    if (config.useWorktrees) {
-      worktreePath = await ensureWorktree(config.path, row.issueNumber)
-      cwd = worktreePath
-    }
+  if (config.useWorktrees) {
+    worktreePath = await ensureWorktree(config.path, row.issueNumber)
+    cwd = worktreePath
   }
 
   const sessionId = await acp.newSession(cwd, [])
@@ -295,9 +357,15 @@ async function ensureSession(issueNodeId: string, live: LiveSession): Promise<Is
 }
 
 async function sessionCwd(mapping: IssueSession): Promise<string> {
-  if (mapping.worktreePath) return mapping.worktreePath
+  if (mapping.worktreePath && existsSync(mapping.worktreePath)) return mapping.worktreePath
   const config = repoConfig(mapping.repo)
-  return config?.path || os.homedir()
+  if (!config?.path) throw new Error(`Configure a local clone for ${mapping.repo} before asking Goose`)
+  if (config.useWorktrees) {
+    const worktreePath = await ensureWorktree(config.path, mapping.issueNumber)
+    saveIssueSession({ ...mapping, worktreePath })
+    return worktreePath
+  }
+  return config.path
 }
 
 /**
@@ -321,4 +389,11 @@ async function applyInstructions(sessionId: string, repo: string): Promise<void>
 
 export function shutdownSessions(): void {
   acp.shutdown()
+}
+
+export function resetSessions(): void {
+  acp.shutdown()
+  liveByIssue.clear()
+  issueBySessionId.clear()
+  openingByIssue.clear()
 }

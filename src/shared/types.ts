@@ -129,12 +129,19 @@ export type GooseSessionView = {
   error?: string
 }
 
+export type GoosePermissionRequest = {
+  requestId: number
+  title: string
+  detail?: string
+}
+
 /** streamed updates from main -> renderer for the right pane */
 export type GooseStreamEvent =
   | { type: 'agent-text'; issueNodeId: string; messageId: string; delta: string }
   | { type: 'tool-call'; issueNodeId: string; messageId: string; call: GooseToolCall }
   | { type: 'turn-end'; issueNodeId: string; stopReason: string }
   | { type: 'error'; issueNodeId: string; message: string }
+  | { type: 'permission-request'; issueNodeId: string; request: GoosePermissionRequest }
 
 // ---------- Drafts ----------
 

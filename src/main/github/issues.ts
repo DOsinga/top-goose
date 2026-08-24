@@ -48,19 +48,14 @@ export async function fetchIssue(repo: string, issueNumber: number): Promise<Res
 export async function fetchComments(
   repo: string,
   issueNumber: number,
-  sinceCommentId?: number,
 ): Promise<IssueComment[]> {
-  // Comment IDs are monotonic; paging by created-ascending and filtering on
-  // ID gives "comments newer than the cursor" without a dedicated API.
   const out: IssueComment[] = []
-  for (let page = 1; page <= 10; page++) {
+  for (let page = 1; ; page++) {
     const res = await restGet<RestComment[]>(
-      `/repos/${repo}/issues/${issueNumber}/comments?per_page=100&page=${page}`,
+      `/repos/${repo}/issues/${issueNumber}/comments?per_page=100&page=${page}&sort=created&direction=asc`,
     )
     const batch = res.data ?? []
-    for (const c of batch) {
-      if (!sinceCommentId || c.id > sinceCommentId) out.push(toComment(c))
-    }
+    out.push(...batch.map(toComment))
     if (batch.length < 100) break
   }
   return out
