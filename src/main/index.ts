@@ -7,6 +7,14 @@ import { registerIpc } from './ipc'
 import { startDraftServer, stopDraftServer } from './mcp/draftServer'
 import { flushAllStores } from './store'
 
+app.setName('Top Goose')
+
+function appIconPath(): string {
+  return app.isPackaged
+    ? path.join(app.getAppPath(), 'out/renderer/top-goose.png')
+    : path.join(app.getAppPath(), 'resources/top-goose.png')
+}
+
 function createWindow(): void {
   const win = new BrowserWindow({
     width: 1440,
@@ -14,6 +22,7 @@ function createWindow(): void {
     minWidth: 1000,
     minHeight: 600,
     title: 'Top Goose',
+    icon: appIconPath(),
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
     webPreferences: {
       preload: path.join(import.meta.dirname, '../preload/index.cjs'),
@@ -43,6 +52,7 @@ function createWindow(): void {
 }
 
 app.whenReady().then(async () => {
+  if (process.platform === 'darwin') app.dock?.setIcon(appIconPath())
   registerIpc()
   await startDraftServer()
   createWindow()

@@ -35,7 +35,10 @@ function TitleBar(): React.JSX.Element {
 
   return (
     <div className="titlebar-drag flex h-11 shrink-0 items-center border-b border-gray-200 bg-gray-50 pl-20 pr-3">
-      <span className="text-[15px] font-bold tracking-tight text-gray-800">🪿 Top Goose</span>
+      <span className="flex items-center gap-1.5 text-[15px] font-bold tracking-tight text-gray-800">
+        <img src="./top-goose.png" alt="" className="h-7 w-7 object-contain" />
+        Top Goose
+      </span>
       <div className="ml-auto flex items-center gap-3">
         {budget && budget.degraded && (
           <span className="rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-800">
