@@ -1,6 +1,14 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { coreTeam } from '../../../shared/coreTeam'
 import type { IssueDetail } from '../../../shared/types'
+import {
+  insertMention,
+  matchingMentions,
+  mentionAtCursor,
+  mentionCandidates,
+  type MentionCandidate,
+  type MentionRange,
+} from '../mentions'
 import { useStore } from '../store'
 import { Markdown } from './Markdown'
 
@@ -194,6 +202,19 @@ function Composer(): React.JSX.Element {
   const discardOfferedDraft = useStore((s) => s.discardOfferedDraft)
   const reply = useStore((s) => s.reply)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const [mention, setMention] = useState<MentionRange | null>(null)
+  const [mentionIndex, setMentionIndex] = useState(0)
+  const candidates = useMemo(() => mentionCandidates(issue), [issue])
+  const matches = mention ? matchingMentions(candidates, mention.query) : []
+
+  useEffect(() => {
+    setMention(null)
+    setMentionIndex(0)
+  }, [selected])
+
+  useEffect(() => {
+    setMentionIndex(0)
+  }, [mention?.query])
 
   if (!selected) return <></>
   const text = composer?.text ?? ''
@@ -207,6 +228,21 @@ function Composer(): React.JSX.Element {
     el.focus()
     el.setSelectionRange(el.value.length, el.value.length)
     document.execCommand('insertText', false, (el.value && !el.value.endsWith('\n') ? '\n' : '') + draft)
+  }
+
+  const updateMention = (el: HTMLTextAreaElement): void => {
+    setMention(mentionAtCursor(el.value, el.selectionStart))
+  }
+
+  const chooseMention = (candidate: MentionCandidate): void => {
+    if (!mention || !selected) return
+    const inserted = insertMention(text, mention, candidate.login)
+    setComposerText(selected, inserted.text, true)
+    setMention(null)
+    requestAnimationFrame(() => {
+      textareaRef.current?.focus()
+      textareaRef.current?.setSelectionRange(inserted.cursor, inserted.cursor)
+    })
   }
 
   return (
@@ -225,20 +261,73 @@ function Composer(): React.JSX.Element {
         </div>
       )}
       {composer?.error && <div className="mb-2 text-xs text-red-600">Could not post reply: {composer.error}</div>}
-      <textarea
-        ref={textareaRef}
-        className="h-24 w-full resize-none rounded-lg border border-gray-300 p-3 text-sm focus:border-accent focus:outline-none"
-        placeholder="Reply on GitHub… (⌘↵ to send)"
-        value={text}
-        disabled={!ready || composer?.sending}
-        onChange={(e) => setComposerText(selected, e.target.value, true)}
-        onKeyDown={(e) => {
-          if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-            e.preventDefault()
-            void reply()
-          }
-        }}
-      />
+      <div className="relative">
+        {mention && matches.length > 0 && (
+          <div className="absolute bottom-full left-0 z-10 mb-1 max-h-64 w-72 overflow-y-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
+            {matches.map((candidate, index) => (
+              <button
+                key={candidate.login}
+                type="button"
+                className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm ${
+                  index === mentionIndex ? 'bg-accent/10 text-accent' : 'hover:bg-gray-50'
+                }`}
+                onMouseDown={(e) => {
+                  e.preventDefault()
+                  chooseMention(candidate)
+                }}
+              >
+                <span className="min-w-0 flex-1 truncate">
+                  {candidate.name ? `${candidate.name} ` : ''}
+                  <span className="text-gray-500">@{candidate.login}</span>
+                </span>
+                <span className="text-[10px] text-gray-400">
+                  {candidate.core ? 'core team' : 'in conversation'}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+        <textarea
+          ref={textareaRef}
+          className="h-24 w-full resize-none rounded-lg border border-gray-300 p-3 text-sm focus:border-accent focus:outline-none"
+          placeholder="Reply on GitHub… (⌘↵ to send)"
+          value={text}
+          disabled={!ready || composer?.sending}
+          onBlur={() => setMention(null)}
+          onClick={(e) => updateMention(e.currentTarget)}
+          onChange={(e) => {
+            updateMention(e.currentTarget)
+            setComposerText(selected, e.target.value, true)
+          }}
+          onKeyDown={(e) => {
+            if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+              e.preventDefault()
+              setMention(null)
+              void reply()
+              return
+            }
+            if (!mention || matches.length === 0) return
+            if (e.key === 'ArrowDown') {
+              e.preventDefault()
+              setMentionIndex((mentionIndex + 1) % matches.length)
+            } else if (e.key === 'ArrowUp') {
+              e.preventDefault()
+              setMentionIndex((mentionIndex - 1 + matches.length) % matches.length)
+            } else if (e.key === 'Enter' || e.key === 'Tab') {
+              e.preventDefault()
+              chooseMention(matches[mentionIndex] ?? matches[0])
+            } else if (e.key === 'Escape') {
+              e.preventDefault()
+              setMention(null)
+            }
+          }}
+          onKeyUp={(e) => {
+            if (!['ArrowDown', 'ArrowUp', 'Enter', 'Tab', 'Escape'].includes(e.key)) {
+              updateMention(e.currentTarget)
+            }
+          }}
+        />
+      </div>
       <div className="mt-1 flex justify-end">
         <button
           className="rounded-lg bg-accent px-4 py-1.5 text-sm font-medium text-white disabled:opacity-40"
