@@ -2,8 +2,6 @@
 
 GitHub issues as chat conversations, with a private [Goose](https://github.com/block/goose) side-channel attached to every issue.
 
-![Top Goose](TopGoose.png)
-
 Issue triage usually means a browser tab per issue and no help from your agent. Top Goose turns a repository's issues into something closer to Slack:
 
 - **Left — channels:** issues involving you, sorted by activity, with unread counts, board status, and filter pills (`unread` / `unreplied` / `assigned`).
