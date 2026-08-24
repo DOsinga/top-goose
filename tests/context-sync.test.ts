@@ -5,11 +5,13 @@ import type { IssueSession } from '../src/main/store'
 const github = vi.hoisted(() => ({
   issue: {} as Record<string, unknown>,
   comments: [] as IssueComment[],
+  fetchIssue: vi.fn(),
+  fetchComments: vi.fn(),
 }))
 
 vi.mock('../src/main/github/issues', () => ({
-  fetchIssue: vi.fn(async () => github.issue),
-  fetchComments: vi.fn(async () => github.comments),
+  fetchIssue: github.fetchIssue,
+  fetchComments: github.fetchComments,
 }))
 
 const { buildContext, promptWithContext, visibleUserMessage } = await import('../src/main/goose/contextSync')
@@ -54,6 +56,8 @@ function session(): IssueSession {
 beforeEach(() => {
   github.issue = { ...baseIssue }
   github.comments = [comment(1, 'first')]
+  github.fetchIssue.mockReset().mockImplementation(async () => github.issue)
+  github.fetchComments.mockReset().mockImplementation(async () => github.comments)
 })
 
 describe('context synchronization', () => {
@@ -77,6 +81,15 @@ describe('context synchronization', () => {
 
     expect(next.contextBlock).toContain('"kind": "conversation-update"')
     expect(next.contextBlock).not.toContain('"body": "first"')
+  })
+
+  it('does not fetch comments when the issue has not changed', async () => {
+    const first = await buildContext(session(), true)
+
+    const next = await buildContext({ ...session(), ...first.cursors }, false)
+
+    expect(next.contextBlock).toBeNull()
+    expect(github.fetchComments).toHaveBeenCalledTimes(1)
   })
 })
 

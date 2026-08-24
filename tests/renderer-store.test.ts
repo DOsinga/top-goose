@@ -126,6 +126,7 @@ describe('issue selection', () => {
     expect(useStore.getState().issue).toBeNull()
     expect(useStore.getState().gooseChats.B).toBeUndefined()
   })
+
 })
 
 describe('GitHub replies', () => {

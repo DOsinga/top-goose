@@ -17,7 +17,6 @@ import {
   openIssueSession,
   promptIssue,
   resetSessions,
-  respondIssuePermission,
 } from './goose/sessions'
 import { onDraft } from './mcp/draftServer'
 import { getAuthMeta, getCachedRow, getGitHubToken, repoConfig, settings, takePendingDraft } from './store'
@@ -191,9 +190,6 @@ export function registerIpc(): void {
     await promptIssue(issueNodeId, text)
   })
   handle('session:cancel', (issueNodeId) => cancelIssue(issueNodeId))
-  handle('session:permission', (issueNodeId, requestId, allow) =>
-    respondIssuePermission(issueNodeId, requestId, allow),
-  )
 
   // ----- drafts -----
   handle('draft:take', (issueNodeId) => {

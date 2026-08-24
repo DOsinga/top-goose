@@ -87,10 +87,24 @@ export function visibleUserMessage(prompt: string): string {
 }
 
 export async function buildContext(session: IssueSession, isFirstTurn: boolean): Promise<SyncResult> {
-  const [issue, comments] = await Promise.all([
-    fetchIssue(session.repo, session.issueNumber),
-    fetchComments(session.repo, session.issueNumber),
-  ])
+  const issue = await fetchIssue(session.repo, session.issueNumber)
+  if (
+    !isFirstTurn &&
+    session.lastSyncedHistoryHash &&
+    issue.updated_at === session.lastSyncedIssueUpdatedAt
+  ) {
+    return {
+      contextBlock: null,
+      cursors: {
+        lastSyncedCommentId: session.lastSyncedCommentId,
+        lastSyncedIssueUpdatedAt: session.lastSyncedIssueUpdatedAt,
+        lastSyncedCommentCount: session.lastSyncedCommentCount,
+        lastSyncedBodyUpdatedAt: session.lastSyncedBodyUpdatedAt,
+        lastSyncedHistoryHash: session.lastSyncedHistoryHash,
+      },
+    }
+  }
+  const comments = await fetchComments(session.repo, session.issueNumber)
 
   const makeCursors = (): SyncResult['cursors'] => ({
     lastSyncedCommentId: comments.at(-1)?.id,

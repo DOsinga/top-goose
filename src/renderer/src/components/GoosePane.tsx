@@ -20,7 +20,6 @@ export function GoosePane(): React.JSX.Element {
   const chat = useStore((s) => (selected ? s.gooseChats[selected] : undefined))
   const promptGoose = useStore((s) => s.promptGoose)
   const cancelGoose = useStore((s) => s.cancelGoose)
-  const respondPermission = useStore((s) => s.respondGoosePermission)
   const [inputs, setInputs] = useState<Record<string, string>>({})
   const endRef = useRef<HTMLDivElement>(null)
 
@@ -68,26 +67,6 @@ export function GoosePane(): React.JSX.Element {
           </div>
         )}
         {chat?.messages.map((m) => <GooseBubble key={m.id} message={m} />)}
-        {chat?.permissions.map((request) => (
-          <div key={request.requestId} className="rounded border border-amber-300 bg-amber-50 p-2 text-[12px]">
-            <div className="font-medium text-amber-900">{request.title}</div>
-            {request.detail && <div className="mt-1 max-h-20 overflow-auto break-all font-mono text-[10px] text-amber-800">{request.detail}</div>}
-            <div className="mt-2 flex justify-end gap-2">
-              <button
-                className="rounded px-2 py-1 text-gray-600 hover:bg-amber-100"
-                onClick={() => void respondPermission(selected, request.requestId, false)}
-              >
-                Deny
-              </button>
-              <button
-                className="rounded bg-amber-700 px-2 py-1 text-white"
-                onClick={() => void respondPermission(selected, request.requestId, true)}
-              >
-                Allow once
-              </button>
-            </div>
-          </div>
-        ))}
         {chat?.busy && <div className="text-[12px] text-gray-400">Goose is working…</div>}
         <div ref={endRef} />
       </div>

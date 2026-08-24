@@ -61,23 +61,6 @@ acp.onSessionUpdate((sessionId, update) => {
   applyUpdate(live, update, true)
 })
 
-acp.onPermissionRequest((request) => {
-  const issueNodeId = issueBySessionId.get(request.sessionId)
-  if (!issueNodeId) {
-    acp.respondPermission(request.sessionId, request.requestId, false)
-    return
-  }
-  emit({
-    type: 'permission-request',
-    issueNodeId,
-    request: {
-      requestId: request.requestId,
-      title: request.title,
-      detail: request.detail,
-    },
-  })
-})
-
 function applyUpdate(live: LiveSession, update: SessionUpdate, notify: boolean): void {
   switch (update.sessionUpdate) {
     case 'agent_message_chunk': {
@@ -297,12 +280,6 @@ export async function promptIssue(issueNodeId: string, text: string): Promise<vo
 export function cancelIssue(issueNodeId: string): void {
   const live = liveByIssue.get(issueNodeId)
   if (live?.sessionId) acp.cancel(live.sessionId)
-}
-
-export function respondIssuePermission(issueNodeId: string, requestId: number, allow: boolean): void {
-  const live = liveByIssue.get(issueNodeId)
-  if (!live?.sessionId) throw new Error('Goose session is not open')
-  acp.respondPermission(live.sessionId, requestId, allow)
 }
 
 // ---------- session creation ----------

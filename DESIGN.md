@@ -538,13 +538,13 @@ Top Goose needs:
 - Per-session extension configuration, to register the `draft_reply` endpoint
 - Session identity that survives app restarts
 
-### Sensitive Tool Approvals
+### No Tool Approvals
 
-Sessions run in Goose's `smart_approve` mode. Read-only tool calls execute and are displayed after the fact. When Goose considers a tool call sensitive, the right pane shows a compact Allow once / Deny control.
+Sessions run in Goose's `auto` mode. Permission requests are approved automatically, and tool calls are displayed after the fact.
 
-This keeps ordinary code reading useful without treating a worktree as a security boundary. Approval requests are uncommon and remain attached to the active Goose turn rather than becoming a separate queue.
+This keeps the right pane a chat column rather than an approval queue. Top Goose is deliberately a YOLO interface: the configured workspace and worktrees protect concurrent Git state, but they are not a security sandbox.
 
-`useWorktrees` remains recommended because it protects concurrent Git state. Approval remains necessary for sensitive operations that can reach beyond a worktree.
+`useWorktrees` remains recommended because it protects concurrent Git state. Users opting into Top Goose accept that an auto-mode agent can perform sensitive operations without another confirmation.
 
 Goose-specific ACP+ features can be used freely where they improve the experience.
 

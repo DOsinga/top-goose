@@ -3,7 +3,6 @@ import type {
   AuthState,
   CachedRow,
   GooseMessage,
-  GoosePermissionRequest,
   GooseStreamEvent,
   GooseToolCall,
   IssueDetail,
@@ -29,7 +28,6 @@ type GooseChat = {
   noWorkspace: boolean
   error?: string
   loaded: boolean
-  permissions: GoosePermissionRequest[]
 }
 
 export type SidebarFilter = 'unread' | 'unreplied' | 'assigned'
@@ -60,7 +58,6 @@ export type State = {
   discardOfferedDraft: (nodeId: string) => void
   promptGoose: (nodeId: string, text: string) => Promise<void>
   cancelGoose: (nodeId: string) => void
-  respondGoosePermission: (nodeId: string, requestId: number, allow: boolean) => Promise<void>
   setView: (view: 'main' | 'settings') => void
   setAuth: (auth: AuthState) => void
   toggleSidebarFilter: (filter: SidebarFilter) => void
@@ -148,7 +145,7 @@ export const useStore = create<State>((set, get) => ({
       set({
         gooseChats: {
           ...chats,
-          [nodeId]: { messages: [], busy: false, noWorkspace: false, loaded: false, permissions: [] },
+          [nodeId]: { messages: [], busy: false, noWorkspace: false, loaded: false },
         },
       })
       void api
@@ -166,7 +163,6 @@ export const useStore = create<State>((set, get) => ({
                       noWorkspace: view.noWorkspace,
                       error: view.error,
                       loaded: true,
-                      permissions: [],
                     },
                   },
                 },
@@ -185,7 +181,6 @@ export const useStore = create<State>((set, get) => ({
                       noWorkspace: false,
                       error: err.message,
                       loaded: false,
-                      permissions: [],
                     },
                   },
                 },
@@ -362,40 +357,6 @@ export const useStore = create<State>((set, get) => ({
     void api.invoke('session:cancel', nodeId)
   },
 
-  respondGoosePermission: async (nodeId, requestId, allow) => {
-    const generation = get().generation
-    const request = get().gooseChats[nodeId]?.permissions.find((item) => item.requestId === requestId)
-    if (!request) return
-    set((state) => {
-      const chat = state.gooseChats[nodeId]
-      if (!chat) return state
-      return {
-        gooseChats: {
-          ...state.gooseChats,
-          [nodeId]: { ...chat, permissions: chat.permissions.filter((item) => item.requestId !== requestId) },
-        },
-      }
-    })
-    try {
-      await api.invoke('session:permission', nodeId, requestId, allow)
-    } catch (err) {
-      set((state) => {
-        const chat = state.gooseChats[nodeId]
-        if (state.generation !== generation || !chat) return state
-        return {
-          gooseChats: {
-            ...state.gooseChats,
-            [nodeId]: {
-              ...chat,
-              error: err instanceof Error ? err.message : String(err),
-              permissions: [...chat.permissions, request],
-            },
-          },
-        }
-      })
-    }
-  },
-
   setView: (view) => set({ view }),
   setAuth: (auth) =>
     set((state) => {
@@ -464,11 +425,9 @@ function applyStream(chat: GooseChat, event: GooseStreamEvent): GooseChat {
       return { ...chat, messages }
     }
     case 'turn-end':
-      return { ...chat, busy: false, permissions: [] }
+      return { ...chat, busy: false }
     case 'error':
-      return { ...chat, busy: false, error: event.message, permissions: [] }
-    case 'permission-request':
-      return { ...chat, permissions: [...chat.permissions, event.request] }
+      return { ...chat, busy: false, error: event.message }
     default:
       return chat
   }
