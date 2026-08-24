@@ -4,7 +4,7 @@ GitHub issues as chat conversations, with a private [Goose](https://github.com/b
 
 Issue triage usually means a browser tab per issue and no help from your agent. Top Goose turns a repository's issues into something closer to Slack:
 
-- **Left — channels:** every open issue in the repository, sorted by activity, with unread counts, board status, and filter pills (`unread` / `unreplied` / `assigned`).
+- **Left — channels:** every open issue in the repository, sorted by activity, with unread counts, board status, filter pills (`unread` / `unreplied` / `assigned`), and a board-status dropdown.
 - **Center — the conversation:** the GitHub discussion, a reply composer, and in-place editing of the Projects V2 `Status` and snooze date.
 - **Right — the goose:** a private Goose conversation scoped to the current issue, running against your local clone. Nothing there touches GitHub unless *you* press send: when Goose drafts a reply it lands in your composer for review, never on the issue.
 

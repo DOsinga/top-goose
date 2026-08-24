@@ -76,6 +76,8 @@ Zip crashes on large files (2)
 
 Workflow states such as `Inbox`, `Needs Information`, `Triaged`, and `Ready` are the `Status` field of the issue's Projects V2 board item, not issue labels and not separate sections in the sidebar.
 
+The sidebar can filter to one workflow state at a time. This filter combines with the unread, unreplied, and assigned filters.
+
 This matters for the API design: Projects V2 fields exist only in GraphQL. There is no REST equivalent. Any view that shows workflow state, including the sidebar, requires a GraphQL read.
 
 The board also carries a snooze date as a Projects V2 date field. A snoozed issue is de-emphasized in the sidebar until its snooze date passes.

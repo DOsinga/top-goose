@@ -42,6 +42,7 @@ beforeEach(() => {
   invoke.mockReset()
   useStore.setState({
     rows: [],
+    workflowStatusFilter: null,
     selectedNodeId: null,
     issue: null,
     issueLoading: false,

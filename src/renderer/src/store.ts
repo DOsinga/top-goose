@@ -37,6 +37,7 @@ export type State = {
   rows: CachedRow[]
   /** active filters combine with AND; none active shows everything */
   sidebarFilters: SidebarFilter[]
+  workflowStatusFilter: string | null
   selectedNodeId: string | null
   issue: IssueDetail | null
   issueLoading: boolean
@@ -63,6 +64,7 @@ export type State = {
   setView: (view: 'main' | 'settings') => void
   setAuth: (auth: AuthState) => void
   toggleSidebarFilter: (filter: SidebarFilter) => void
+  setWorkflowStatusFilter: (status: string | null) => void
 }
 
 const emptyComposer: ComposerState = { text: '', dirty: false, sending: false }
@@ -82,6 +84,7 @@ export const useStore = create<State>((set, get) => ({
   auth: null,
   rows: [],
   sidebarFilters: [],
+  workflowStatusFilter: null,
   selectedNodeId: null,
   issue: null,
   issueLoading: false,
@@ -110,6 +113,7 @@ export const useStore = create<State>((set, get) => ({
       api.on('push:reset', () =>
         set((state) => ({
           rows: [],
+          workflowStatusFilter: null,
           selectedNodeId: null,
           issue: null,
           assigneeSaving: false,
@@ -402,6 +406,7 @@ export const useStore = create<State>((set, get) => ({
       return {
         auth,
         rows: [],
+        workflowStatusFilter: null,
         selectedNodeId: null,
         issue: null,
         assigneeSaving: false,
@@ -416,6 +421,7 @@ export const useStore = create<State>((set, get) => ({
         ? s.sidebarFilters.filter((f) => f !== filter)
         : [...s.sidebarFilters, filter],
     })),
+  setWorkflowStatusFilter: (workflowStatusFilter) => set({ workflowStatusFilter }),
 }))
 
 function applyDraft(
