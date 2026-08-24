@@ -58,7 +58,7 @@ Optionally pick a Projects V2 board plus its `Status` and snooze (date) fields �
 
 ## How it talks to Goose
 
-One long-lived `goose acp` child process (newline-delimited JSON-RPC over stdio) multiplexes all sessions: one persistent session per issue, keyed on the issue node ID and resumed across restarts via `session/load`. GitHub context (issue body, new comments) is injected as delta blocks per turn, with a full-snapshot fallback when edits or deletions are detected. Sessions run in `GOOSE_MODE=auto`; isolation comes from the worktrees, not from approval prompts.
+One long-lived `goose acp` child process (newline-delimited JSON-RPC over stdio) multiplexes all sessions: one persistent session per issue and GitHub account, resumed across restarts via `session/load`. GitHub context is injected as untrusted JSON data per turn, with hashes detecting edits and deletions that require a full snapshot. Sessions run in `GOOSE_MODE=auto`; permission requests are approved automatically and tool calls are displayed after the fact. Worktrees isolate concurrent Git state; they are not a security sandbox.
 
 The `draft_reply` tool Goose uses is served by an MCP endpoint inside the Electron main process (127.0.0.1, random port, per-launch token, per-issue session paths). It is attached to sessions via `_goose/unstable/session/extensions/add` after a bare create/load — passing `mcpServers` inline replaces the session's whole extension list on goose ≤ 1.47 ([goose#11339](https://github.com/block/goose/pull/11339)), which would strip the developer extension. Drafts land in the reply composer: replacing it when it's untouched, offered as *Insert / Discard* when you've typed, and queued on the issue's sidebar row when the issue isn't open.
 
@@ -66,6 +66,7 @@ The `draft_reply` tool Goose uses is served by an MCP endpoint inside the Electr
 
 ```sh
 npm run dev        # electron-vite; add --watch to hot-restart the main process too
+npm test           # focused state, replay, and context synchronization tests
 npm run typecheck  # both the node and web tsconfigs
 npm run build
 ```

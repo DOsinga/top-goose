@@ -2,6 +2,8 @@ import type { CachedRow } from '../shared/types'
 import { budgetDegraded, graphql, isProjectScopeError, restGet, restSend } from './github/client'
 import { extractBoardFields } from './github/projects'
 import {
+  clearCachedRows,
+  clearPendingDrafts,
   getCachedRow,
   getCachedRows,
   hasPendingDraft,
@@ -68,6 +70,17 @@ export function stop(): void {
   if (reconcileTimer) clearInterval(reconcileTimer)
   notifTimer = null
   reconcileTimer = null
+}
+
+export function reset(): void {
+  stop()
+  notifEtag = undefined
+  threadByNode.clear()
+  pendingThreadIds.clear()
+  hasProjectScope = true
+  clearCachedRows()
+  clearPendingDrafts()
+  emitRows()
 }
 
 export async function refreshNow(): Promise<void> {
@@ -293,26 +306,42 @@ async function hydrate(refs: IssueRef[]): Promise<void> {
 // ---------- Reconciliation: the complete desired set, on a slow timer ----------
 
 async function reconcile(): Promise<void> {
-  type SearchResult = { search: { nodes: (GqlIssueRow | Record<string, never>)[] } }
+  type SearchResult = {
+    search: {
+      nodes: (GqlIssueRow | Record<string, never>)[]
+      pageInfo: { hasNextPage: boolean; endCursor: string | null }
+    }
+  }
   const configured = settingsRepo()
   const query = configured
     ? `is:issue repo:${configured} involves:@me state:open sort:updated-desc`
     : 'is:issue involves:@me state:open sort:updated-desc'
-  const data = await rowQuery<SearchResult>(
-    (fragment) => `query ($q: String!) {
-      search(query: $q, type: ISSUE, first: 50) {
-        nodes { ...RowFields }
-      }
-    } ${fragment}`,
-    { q: query },
-  )
   const rows: CachedRow[] = []
   const keep = new Set<string>()
-  for (const node of data.search.nodes) {
-    if (!('id' in node)) continue
-    const row = toRow(node as GqlIssueRow)
-    keep.add(row.nodeId)
-    rows.push(row)
+  let after: string | null = null
+  for (;;) {
+    const data: SearchResult = await rowQuery<SearchResult>(
+      (fragment) => `query ($q: String!, $after: String) {
+        search(query: $q, type: ISSUE, first: 100, after: $after) {
+          nodes { ...RowFields }
+          pageInfo { hasNextPage endCursor }
+        }
+      } ${fragment}`,
+      { q: query, after },
+    )
+    for (const node of data.search.nodes) {
+      if (!('id' in node)) continue
+      const row = toRow(node as GqlIssueRow)
+      keep.add(row.nodeId)
+      rows.push(row)
+    }
+    if (!data.search.pageInfo.hasNextPage) break
+    if (budgetDegraded()) {
+      putCachedRows(rows)
+      emitRows()
+      return
+    }
+    after = data.search.pageInfo.endCursor
   }
   putCachedRows(rows)
   pruneCachedRows(keep)

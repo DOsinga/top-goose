@@ -153,6 +153,7 @@ function Bubble({
 
 function Composer(): React.JSX.Element {
   const selected = useStore((s) => s.selectedNodeId)
+  const issue = useStore((s) => s.issue)
   const composer = useStore((s) => (selected ? s.composers[selected] : undefined))
   const setComposerText = useStore((s) => s.setComposerText)
   const acceptOfferedDraft = useStore((s) => s.acceptOfferedDraft)
@@ -162,6 +163,7 @@ function Composer(): React.JSX.Element {
 
   if (!selected) return <></>
   const text = composer?.text ?? ''
+  const ready = issue?.nodeId === selected
 
   const insertDraft = (): void => {
     const draft = acceptOfferedDraft(selected)
@@ -188,11 +190,13 @@ function Composer(): React.JSX.Element {
           </button>
         </div>
       )}
+      {composer?.error && <div className="mb-2 text-xs text-red-600">Could not post reply: {composer.error}</div>}
       <textarea
         ref={textareaRef}
         className="h-24 w-full resize-none rounded-lg border border-gray-300 p-3 text-sm focus:border-accent focus:outline-none"
         placeholder="Reply on GitHub… (⌘↵ to send)"
         value={text}
+        disabled={!ready || composer?.sending}
         onChange={(e) => setComposerText(selected, e.target.value, true)}
         onKeyDown={(e) => {
           if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
@@ -204,10 +208,10 @@ function Composer(): React.JSX.Element {
       <div className="mt-1 flex justify-end">
         <button
           className="rounded-lg bg-accent px-4 py-1.5 text-sm font-medium text-white disabled:opacity-40"
-          disabled={!text.trim()}
+          disabled={!ready || !text.trim() || composer?.sending}
           onClick={() => void reply()}
         >
-          Send to GitHub
+          {composer?.sending ? 'Sending…' : 'Send to GitHub'}
         </button>
       </div>
     </div>

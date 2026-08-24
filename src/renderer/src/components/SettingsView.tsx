@@ -226,9 +226,11 @@ function RepoSection({
       setError(picked.error)
       return
     }
+    const sameRepo = settings.repo?.repo.toLowerCase() === picked.repo.toLowerCase()
+    const previous = sameRepo && settings.repo ? settings.repo : { useWorktrees: true }
     onSettings(
       await api.invoke('settings:saveRepo', {
-        ...(settings.repo ?? { useWorktrees: true }),
+        ...previous,
         repo: picked.repo,
         path: picked.path,
       }),

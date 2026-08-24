@@ -74,6 +74,7 @@ export type PushMap = {
   'push:draft': (draft: PendingDraft) => void
   'push:auth': (state: AuthState) => void
   'push:budget': (budget: RateBudget) => void
+  'push:reset': () => void
 }
 
 export type InvokeChannel = keyof InvokeMap

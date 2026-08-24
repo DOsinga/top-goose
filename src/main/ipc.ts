@@ -11,9 +11,15 @@ import { onBudgetChange, getBudget } from './github/client'
 import { fetchIssueDetail, postComment } from './github/issues'
 import { listFields, listProjects, setIssueSnooze, setIssueStatus } from './github/projects'
 import { findGoose, invalidateGooseInfo } from './goose/discover'
-import { cancelIssue, onGooseStream, openIssueSession, promptIssue } from './goose/sessions'
+import {
+  cancelIssue,
+  onGooseStream,
+  openIssueSession,
+  promptIssue,
+  resetSessions,
+} from './goose/sessions'
 import { onDraft } from './mcp/draftServer'
-import { getCachedRow, repoConfig, settings, takePendingDraft } from './store'
+import { getAuthMeta, getCachedRow, getGitHubToken, repoConfig, settings, takePendingDraft } from './store'
 
 function handle<C extends keyof InvokeMap>(
   channel: C,
@@ -45,8 +51,30 @@ export function registerIpc(): void {
     invalidateGooseInfo()
     return next
   })
-  handle('settings:saveRepo', (config) => settings().update((s) => ({ ...s, repo: config })))
-  handle('settings:removeRepo', () => settings().update((s) => ({ ...s, repo: undefined })))
+  handle('settings:saveRepo', async (config) => {
+    const previous = settings().get().repo
+    const next = settings().update((s) => ({ ...s, repo: config }))
+    const workspaceChanged =
+      previous?.repo.toLowerCase() !== config.repo.toLowerCase() ||
+      previous.path !== config.path ||
+      previous.useWorktrees !== config.useWorktrees
+    if (workspaceChanged) {
+      resetSessions()
+      activity.reset()
+      broadcast('push:reset', undefined)
+      if (getGitHubToken()) activity.start()
+    } else if (getGitHubToken()) {
+      await activity.refreshNow()
+    }
+    return next
+  })
+  handle('settings:removeRepo', () => {
+    const next = settings().update((s) => ({ ...s, repo: undefined }))
+    resetSessions()
+    activity.reset()
+    broadcast('push:reset', undefined)
+    return next
+  })
   handle('repo:pickClone', async () => {
     const result = await dialog.showOpenDialog({
       title: 'Choose the local clone',
@@ -67,13 +95,26 @@ export function registerIpc(): void {
   // ----- auth -----
   handle('auth:state', () => authState())
   handle('auth:setToken', async (token) => {
+    const previousAccount = getAuthMeta().login
     const state = await setPat(token)
-    if (state.authenticated) activity.start()
+    if (state.authenticated) {
+      if (previousAccount?.toLowerCase() !== state.login?.toLowerCase()) {
+        resetSessions()
+        activity.reset()
+        broadcast('push:reset', undefined)
+      }
+      activity.start()
+    }
+    broadcast('push:auth', state)
     return state
   })
   handle('auth:signOut', () => {
-    activity.stop()
-    return signOut()
+    resetSessions()
+    activity.reset()
+    const state = signOut()
+    broadcast('push:reset', undefined)
+    broadcast('push:auth', state)
+    return state
   })
 
   // ----- goose binary -----

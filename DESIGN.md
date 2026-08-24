@@ -337,13 +337,13 @@ type RepoConfig = {
 }
 ```
 
-`path` is the local clone for that repository. Issues from a repository with no configured path still get a Goose session; that session simply has no code access, and the app should say so rather than let the user wonder why the answers are vague.
+`path` is the local clone for that repository. GitHub triage still works without it, but Goose prompting stays disabled until a clone is configured. Falling back to the user's home directory would give Goose broad access while claiming the opposite.
 
 ### Worktrees
 
 With `useWorktrees` off, every session for that repository runs in the clone itself. This is simpler and fine for read-only questions, but two sessions working at once will interfere with each other.
 
-With it on, each issue session gets its own git worktree, created lazily on the first turn that needs it and branched per issue. Sessions are then isolated and can run concurrently, at the cost of disk and of worktrees outliving the issues that created them. Top Goose should offer to remove a worktree when its issue is closed, rather than reaping anything automatically.
+With it on, each issue session gets its own git worktree, created lazily on the first turn that needs it and branched per issue. Sessions can then change Git state concurrently without trampling each other or the main checkout, at the cost of disk and of worktrees outliving the issues that created them. A worktree is not a filesystem or network sandbox. Top Goose should offer to remove a worktree when its issue is closed, rather than reaping anything automatically.
 
 Worktrees is the recommended setting for anything beyond read-only use.
 
@@ -540,11 +540,11 @@ Top Goose needs:
 
 ### No Tool Approvals
 
-Sessions run without approval prompts. Tool calls execute and are displayed after the fact, compactly, so the user can see what happened without being asked to authorise each step.
+Sessions run in Goose's `auto` mode. Permission requests are approved automatically, and tool calls are displayed after the fact.
 
-This keeps the right pane a chat column rather than an approval queue, which is what makes it viable at its width. It is also the honest setting for the work: an agent that has to ask before every read is not useful for "find the relevant code."
+This keeps the right pane a chat column rather than an approval queue. Top Goose is deliberately a YOLO interface: the configured workspace and worktrees protect concurrent Git state, but they are not a security sandbox.
 
-The safety story is the workspace, not the prompt. `useWorktrees` is what keeps a session from damaging anything that matters, which is the main argument for leaving it on.
+`useWorktrees` remains recommended because it protects concurrent Git state. Users opting into Top Goose accept that an auto-mode agent can perform sensitive operations without another confirmation.
 
 Goose-specific ACP+ features can be used freely where they improve the experience.
 

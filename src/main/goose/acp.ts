@@ -87,7 +87,6 @@ export class AcpClient {
       stdio: ['pipe', 'pipe', 'pipe'],
       env: {
         ...process.env,
-        // no approval prompts: tool calls run and are displayed after the fact
         GOOSE_MODE: 'auto',
       },
     })
@@ -111,6 +110,7 @@ export class AcpClient {
 
     child.on('exit', (code) => {
       console.warn(`[goose-acp] exited with code ${code}`)
+      if (this.child !== child) return
       const err = new Error(`goose acp exited (code ${code})`)
       for (const p of this.pending.values()) p.reject(err)
       this.pending.clear()
@@ -139,8 +139,6 @@ export class AcpClient {
       else pending.resolve(msg.result)
       return
     }
-    // agent -> client request: only permission requests need an answer, and
-    // sessions run in auto mode so any that arrive are auto-approved
     if (msg.id !== undefined && msg.method === 'session/request_permission') {
       this.respond(msg.id, PERMISSION_ALLOW)
       return
@@ -291,8 +289,12 @@ export class AcpClient {
   }
 
   shutdown(): void {
-    this.child?.kill()
+    const child = this.child
     this.child = null
+    const err = new Error('goose acp stopped')
+    for (const pending of this.pending.values()) pending.reject(err)
+    this.pending.clear()
+    child?.kill()
   }
 }
 

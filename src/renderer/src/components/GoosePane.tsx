@@ -20,7 +20,7 @@ export function GoosePane(): React.JSX.Element {
   const chat = useStore((s) => (selected ? s.gooseChats[selected] : undefined))
   const promptGoose = useStore((s) => s.promptGoose)
   const cancelGoose = useStore((s) => s.cancelGoose)
-  const [input, setInput] = useState('')
+  const [inputs, setInputs] = useState<Record<string, string>>({})
   const endRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -30,11 +30,12 @@ export function GoosePane(): React.JSX.Element {
   if (!selected) {
     return <div className="w-96 shrink-0 border-l border-gray-200 bg-gray-50" />
   }
+  const input = inputs[selected] ?? ''
 
   const send = (): void => {
     const text = input.trim()
-    if (!text || !chat || chat.busy) return
-    setInput('')
+    if (!text || !chat?.loaded || chat.noWorkspace || chat.busy) return
+    setInputs((current) => ({ ...current, [selected]: '' }))
     void promptGoose(selected, text)
   }
 
@@ -75,7 +76,8 @@ export function GoosePane(): React.JSX.Element {
           className="h-16 w-full resize-none rounded-lg border border-gray-300 p-2 text-[13px] focus:border-goose focus:outline-none"
           placeholder="Ask Goose… (⌘↵ to send)"
           value={input}
-          onChange={(e) => setInput(e.target.value)}
+          disabled={!chat?.loaded || chat.noWorkspace || chat.busy}
+          onChange={(e) => setInputs((current) => ({ ...current, [selected]: e.target.value }))}
           onKeyDown={(e) => {
             if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
               e.preventDefault()
@@ -94,7 +96,7 @@ export function GoosePane(): React.JSX.Element {
           )}
           <button
             className="rounded-lg bg-goose px-3 py-1 text-[12px] font-medium text-white disabled:opacity-40"
-            disabled={!input.trim() || chat?.busy}
+            disabled={!chat?.loaded || chat.noWorkspace || !input.trim() || chat.busy}
             onClick={send}
           >
             Send
