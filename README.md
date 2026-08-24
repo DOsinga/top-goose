@@ -65,7 +65,7 @@ The `draft_reply` tool Goose uses is served by an MCP endpoint inside the Electr
 ## Development
 
 ```sh
-npm run dev        # electron-vite; add --watch to hot-restart the main process too
+npm run dev        # electron-vite; hot-restarts the main process when it changes
 npm test           # focused state, replay, and context synchronization tests
 npm run typecheck  # both the node and web tsconfigs
 npm run build
