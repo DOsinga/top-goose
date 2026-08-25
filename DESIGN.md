@@ -357,7 +357,7 @@ Worktrees is the recommended setting for anything beyond read-only use.
 
 ### Instructions
 
-Settings has separate free-text instruction blocks for issues and pull requests, alongside a global instruction block that applies everywhere. The matching blocks are appended to each session's system prompt and reapplied before every turn, so changes take effect for sessions that are already open. This is where conventions that are not derivable from the code go: how to run the tests, what the review expectations are, which paths are off limits.
+Settings has separate free-text instruction blocks for issues and pull requests. The matching block is appended to each session's system prompt and reapplied before every turn, so changes take effect for sessions that are already open. This is where conventions that are not derivable from the code go: how to run the tests, what the review expectations are, which paths are off limits.
 
 The issue context described in the following sections is per-turn context, distinct from these instructions, which are per-session.
 

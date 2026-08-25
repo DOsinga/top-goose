@@ -347,7 +347,7 @@ async function sessionCwd(mapping: IssueSession): Promise<string> {
 }
 
 /**
- * Global + issue/PR instructions, appended to the session's system prompt.
+ * Issue/PR instructions, appended to the session's system prompt.
  * Not persisted by goose, so re-applied after every load and before every
  * turn. Older binaries without the method just skip this.
  */

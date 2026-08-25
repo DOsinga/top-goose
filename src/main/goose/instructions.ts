@@ -6,7 +6,7 @@ export const FINISH_THE_TURN =
 export function sessionInstructions(settings: Settings, kind: ConversationKind): string {
   const conversationInstructions =
     kind === 'pullRequest' ? settings.pullRequestInstructions : settings.issueInstructions
-  return [FINISH_THE_TURN, settings.globalInstructions, conversationInstructions]
+  return [FINISH_THE_TURN, conversationInstructions]
     .filter((part): part is string => !!part?.trim())
     .join('\n\n')
 }

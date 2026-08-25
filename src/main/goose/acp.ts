@@ -269,7 +269,7 @@ export class AcpClient {
   }
 
   /**
-   * Global and conversation-type instructions. `_goose/unstable/session/system-prompt/set`
+   * Issue and pull request instructions. `_goose/unstable/session/system-prompt/set`
    * may not exist on older binaries; method-not-found is treated as unsupported.
    */
   async setSystemPromptExtra(sessionId: string, key: string, text: string): Promise<boolean> {

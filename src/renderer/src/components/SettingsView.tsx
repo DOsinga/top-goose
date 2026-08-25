@@ -39,20 +39,7 @@ export function SettingsView(): React.JSX.Element {
         <AuthSection />
         <GooseSection settings={settings} onSettings={setSettings} />
         <div>
-          <h2 className="mb-2 text-sm font-semibold">Global instructions</h2>
-          <p className="mb-2 text-xs text-gray-500">
-            Appended to the system prompt of every Goose session.
-          </p>
-          <textarea
-            className="h-20 w-full rounded border border-gray-300 p-2 text-sm"
-            defaultValue={settings.globalInstructions ?? ''}
-            onBlur={(e) =>
-              void api.invoke('settings:update', { globalInstructions: e.target.value }).then(setSettings)
-            }
-          />
-        </div>
-        <div>
-          <h2 className="mb-2 text-sm font-semibold">Conversation instructions</h2>
+          <h2 className="mb-2 text-sm font-semibold">Instructions</h2>
           <p className="mb-3 text-xs text-gray-500">
             Automatically appended to Goose's system prompt for the matching conversation type.
           </p>

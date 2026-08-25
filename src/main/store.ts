@@ -7,7 +7,21 @@ import { JsonFile } from './persist'
 let settingsFile: JsonFile<Settings> | null = null
 
 export function settings(): JsonFile<Settings> {
-  settingsFile ??= new JsonFile<Settings>('settings.json', {})
+  if (settingsFile) return settingsFile
+  settingsFile = new JsonFile<Settings>('settings.json', {})
+  const current = settingsFile.get() as Settings & {
+    globalInstructions?: string
+    repo?: RepoConfig & { instructions?: string }
+  }
+  if ('globalInstructions' in current || (current.repo && 'instructions' in current.repo)) {
+    const next = { ...current }
+    delete next.globalInstructions
+    if (next.repo) {
+      next.repo = { ...next.repo }
+      delete next.repo.instructions
+    }
+    settingsFile.set(next)
+  }
   return settingsFile
 }
 

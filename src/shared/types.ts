@@ -24,8 +24,6 @@ export type RepoConfig = {
 export type Settings = {
   /** explicit goose binary path override */
   goosePath?: string
-  /** instructions appended to every session's system prompt */
-  globalInstructions?: string
   /** instructions appended to issue sessions */
   issueInstructions?: string
   /** instructions appended to pull request sessions */
