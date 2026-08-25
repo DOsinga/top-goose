@@ -1,8 +1,27 @@
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { githubImageFromHtml } from '../githubImages'
 import { useStore } from '../store'
 
-type MdNode = { type: string; value?: string; url?: string; children?: MdNode[] }
+type MdNode = { type: string; value?: string; url?: string; alt?: string; children?: MdNode[] }
+
+function remarkGithubImages() {
+  return (tree: MdNode): void => {
+    replaceImages(tree)
+
+    function replaceImages(node: MdNode): void {
+      if (!node.children) return
+      node.children = node.children.map((child) => {
+        if (child.type === 'html' && child.value) {
+          const image = githubImageFromHtml(child.value)
+          if (image) return { type: 'image', url: image.url, alt: image.alt }
+        }
+        replaceImages(child)
+        return child
+      })
+    }
+  }
+}
 
 /**
  * Autolink bare #123 references to the repo's issue page. GitHub redirects
@@ -51,7 +70,7 @@ export function Markdown({ children }: { children: string }): React.JSX.Element 
   )
   return (
     <div className="prose-gh text-sm">
-      <ReactMarkdown remarkPlugins={[remarkGfm, [remarkIssueRefs, { repo }]]}>
+      <ReactMarkdown remarkPlugins={[remarkGfm, remarkGithubImages, [remarkIssueRefs, { repo }]]}>
         {children}
       </ReactMarkdown>
     </div>

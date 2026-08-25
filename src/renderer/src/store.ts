@@ -37,10 +37,12 @@ export type State = {
   rows: CachedRow[]
   /** active filters combine with AND; none active shows everything */
   sidebarFilters: SidebarFilter[]
+  workflowStatusFilter: string | null
   selectedNodeId: string | null
   issue: IssueDetail | null
   issueLoading: boolean
   issueError: string | null
+  assigneeSaving: boolean
   composers: Record<string, ComposerState>
   gooseChats: Record<string, GooseChat>
   budget: RateBudget | null
@@ -51,6 +53,7 @@ export type State = {
   selectIssue: (nodeId: string) => Promise<void>
   refreshIssue: () => Promise<void>
   reply: () => Promise<void>
+  setAssignee: (login: string | null) => Promise<void>
   setStatus: (status: string) => Promise<void>
   setSnooze: (date: string | null) => Promise<void>
   setComposerText: (nodeId: string, text: string, dirty: boolean) => void
@@ -61,6 +64,7 @@ export type State = {
   setView: (view: 'main' | 'settings') => void
   setAuth: (auth: AuthState) => void
   toggleSidebarFilter: (filter: SidebarFilter) => void
+  setWorkflowStatusFilter: (status: string | null) => void
 }
 
 const emptyComposer: ComposerState = { text: '', dirty: false, sending: false }
@@ -80,10 +84,12 @@ export const useStore = create<State>((set, get) => ({
   auth: null,
   rows: [],
   sidebarFilters: [],
+  workflowStatusFilter: null,
   selectedNodeId: null,
   issue: null,
   issueLoading: false,
   issueError: null,
+  assigneeSaving: false,
   composers: {},
   gooseChats: {},
   budget: null,
@@ -107,8 +113,10 @@ export const useStore = create<State>((set, get) => ({
       api.on('push:reset', () =>
         set((state) => ({
           rows: [],
+          workflowStatusFilter: null,
           selectedNodeId: null,
           issue: null,
+          assigneeSaving: false,
           composers: {},
           gooseChats: {},
           generation: state.generation + 1,
@@ -136,7 +144,14 @@ export const useStore = create<State>((set, get) => ({
 
   selectIssue: async (nodeId) => {
     const generation = get().generation
-    set({ selectedNodeId: nodeId, issue: null, issueLoading: true, issueError: null, view: 'main' })
+    set({
+      selectedNodeId: nodeId,
+      issue: null,
+      issueLoading: true,
+      issueError: null,
+      assigneeSaving: false,
+      view: 'main',
+    })
     void api.invoke('issue:markRead', nodeId)
 
     // open the goose session in parallel with the issue fetch
@@ -255,6 +270,32 @@ export const useStore = create<State>((set, get) => ({
     }
   },
 
+  setAssignee: async (login) => {
+    const { selectedNodeId, issue, assigneeSaving } = get()
+    const generation = get().generation
+    if (!selectedNodeId || !issue || issue.nodeId !== selectedNodeId || assigneeSaving) return
+    const previous = issue.assignees
+    set({
+      issue: { ...issue, assignees: login ? [login] : [] },
+      assigneeSaving: true,
+      issueError: null,
+    })
+    try {
+      const assignees = await api.invoke('issue:setAssignee', selectedNodeId, login)
+      if (get().generation === generation && get().selectedNodeId === selectedNodeId) {
+        set({ issue: { ...get().issue!, assignees }, assigneeSaving: false })
+      }
+    } catch (err) {
+      if (get().generation === generation && get().selectedNodeId === selectedNodeId) {
+        set({
+          issue: { ...get().issue!, assignees: previous },
+          assigneeSaving: false,
+          issueError: err instanceof Error ? err.message : String(err),
+        })
+      }
+    }
+  },
+
   setStatus: async (status) => {
     const { selectedNodeId, issue } = get()
     const generation = get().generation
@@ -365,8 +406,10 @@ export const useStore = create<State>((set, get) => ({
       return {
         auth,
         rows: [],
+        workflowStatusFilter: null,
         selectedNodeId: null,
         issue: null,
+        assigneeSaving: false,
         composers: {},
         gooseChats: {},
         generation: state.generation + 1,
@@ -378,6 +421,7 @@ export const useStore = create<State>((set, get) => ({
         ? s.sidebarFilters.filter((f) => f !== filter)
         : [...s.sidebarFilters, filter],
     })),
+  setWorkflowStatusFilter: (workflowStatusFilter) => set({ workflowStatusFilter }),
 }))
 
 function applyDraft(

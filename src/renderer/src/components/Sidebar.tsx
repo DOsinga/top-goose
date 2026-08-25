@@ -1,6 +1,8 @@
 import type { CachedRow } from '../../../shared/types'
 import { useStore, type SidebarFilter } from '../store'
 
+const NO_BOARD_STATUS = '__no_board_status__'
+
 function unreadCount(row: CachedRow): number {
   if (row.commentCountAtRead === undefined) return row.unread ? -1 : 0 // -1 = dot, count unknown
   return Math.max(0, row.commentCount - row.commentCountAtRead)
@@ -26,6 +28,8 @@ export function Sidebar(): React.JSX.Element {
   const selectIssue = useStore((s) => s.selectIssue)
   const filters = useStore((s) => s.sidebarFilters)
   const toggleFilter = useStore((s) => s.toggleSidebarFilter)
+  const statusFilter = useStore((s) => s.workflowStatusFilter)
+  const setStatusFilter = useStore((s) => s.setWorkflowStatusFilter)
   const login = useStore((s) => s.auth?.login)
 
   const passes: Record<SidebarFilter, (r: CachedRow) => boolean> = {
@@ -33,27 +37,55 @@ export function Sidebar(): React.JSX.Element {
     unreplied: (r) => isUnreplied(r, login),
     assigned: (r) => !!login && !!r.assignees?.includes(login),
   }
-  // active filters AND together; none active = everything
-  const visible = rows.filter((r) => filters.every((f) => passes[f](r)))
+  const statuses = [...new Set(rows.flatMap((row) => (row.workflowStatus ? [row.workflowStatus] : [])))].sort()
+  const statusOptions =
+    statusFilter && statusFilter !== NO_BOARD_STATUS && !statuses.includes(statusFilter)
+      ? [statusFilter, ...statuses]
+      : statuses
+  const noStatusCount = rows.filter((row) => !row.workflowStatus).length
+  const visible = rows.filter(
+    (row) =>
+      filters.every((filter) => passes[filter](row)) &&
+      (statusFilter === null ||
+        (statusFilter === NO_BOARD_STATUS ? !row.workflowStatus : row.workflowStatus === statusFilter)),
+  )
 
   return (
     <div className="flex w-72 shrink-0 flex-col border-r border-gray-200 bg-gray-50">
-      <div className="flex shrink-0 gap-1 border-b border-gray-200 px-2 py-1.5">
-        {(['unread', 'unreplied', 'assigned'] as const).map((f) => (
-          <FilterPill
-            key={f}
-            label={f}
-            count={rows.filter(passes[f]).length}
-            active={filters.includes(f)}
-            onClick={() => toggleFilter(f)}
-          />
-        ))}
+      <div className="shrink-0 space-y-1.5 border-b border-gray-200 px-2 py-1.5">
+        <div className="flex gap-1">
+          {(['unread', 'unreplied', 'assigned'] as const).map((filter) => (
+            <FilterPill
+              key={filter}
+              label={filter}
+              count={rows.filter(passes[filter]).length}
+              active={filters.includes(filter)}
+              onClick={() => toggleFilter(filter)}
+            />
+          ))}
+        </div>
+        <select
+          aria-label="Filter by board status"
+          className="w-full cursor-pointer rounded border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700"
+          value={statusFilter ?? ''}
+          onChange={(event) => setStatusFilter(event.target.value || null)}
+        >
+          <option value="">All board statuses ({rows.length})</option>
+          {statusOptions.map((status) => (
+            <option key={status} value={status}>
+              {status} ({rows.filter((row) => row.workflowStatus === status).length})
+            </option>
+          ))}
+          {(noStatusCount > 0 || statusFilter === NO_BOARD_STATUS) && (
+            <option value={NO_BOARD_STATUS}>No board status ({noStatusCount})</option>
+          )}
+        </select>
       </div>
       <div className="flex-1 overflow-y-auto">
         {visible.length === 0 && (
           <div className="p-4 text-sm text-gray-500">
             {rows.length === 0
-              ? 'No conversations yet. Issues involving you appear here as activity arrives.'
+              ? 'No open issues in this repository.'
               : 'Nothing matches the active filters.'}
           </div>
         )}

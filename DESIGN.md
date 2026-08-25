@@ -76,6 +76,8 @@ Zip crashes on large files (2)
 
 Workflow states such as `Inbox`, `Needs Information`, `Triaged`, and `Ready` are the `Status` field of the issue's Projects V2 board item, not issue labels and not separate sections in the sidebar.
 
+The sidebar can filter to one workflow state at a time. This filter combines with the unread, unreplied, and assigned filters.
+
 This matters for the API design: Projects V2 fields exist only in GraphQL. There is no REST equivalent. Any view that shows workflow state, including the sidebar, requires a GraphQL read.
 
 The board also carries a snooze date as a Projects V2 date field. A snoozed issue is de-emphasized in the sidebar until its snooze date passes.
@@ -224,11 +226,11 @@ The design splits change detection from hydration, because the two have very dif
 
 ### Discovery Is Not The Same As Change Detection
 
-Notifications alone cannot produce the sidebar. `/notifications` returns unread threads the user is subscribed to, so an issue that was assigned to the user, read once, and then went quiet disappears from it entirely, even though the sidebar promises to show assigned issues.
+Notifications alone cannot produce the sidebar. `/notifications` returns unread threads the user is subscribed to, so quiet issues disappear from it even though the sidebar promises to show every open issue in the repository.
 
 Discovery and change detection are therefore separate jobs:
 
-- **Reconciliation** establishes the complete desired set, with a GraphQL search over `assignee:@me`, `involves:@me`, and anything else the sidebar promises. It runs at startup and then on a slow timer, measured in minutes.
+- **Reconciliation** establishes the complete desired set with a GraphQL search for every open issue in the configured repository. It runs at startup and then on a slow timer, measured in minutes.
 - **Change detection** notices activity within that set, using notifications.
 
 Reconciliation must stay on the slow path. `search` is the expensive GraphQL connection and carries its own throttle, so it does not belong on the poll tick. Rows that reconciliation drops from the set are removed; rows it adds are hydrated like any other.

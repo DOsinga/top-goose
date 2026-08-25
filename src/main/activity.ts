@@ -9,6 +9,7 @@ import {
   hasPendingDraft,
   pruneCachedRows,
   putCachedRows,
+  removeCachedRow,
   repoConfig,
   settings,
   updateCachedRow,
@@ -116,11 +117,12 @@ async function pollNotificationsOnce(): Promise<number | undefined> {
   notifEtag = res.etag
   const changed: IssueRef[] = []
   const configured = settingsRepo()
+  if (!configured) return res.pollInterval
   for (const n of res.data ?? []) {
     // pull requests are not channels; filter their notifications out
     if (n.subject.type !== 'Issue' || !n.subject.url) continue
     // the app is scoped to the one configured repository
-    if (configured && n.repository.full_name.toLowerCase() !== configured) continue
+    if (n.repository.full_name.toLowerCase() !== configured) continue
     const match = n.subject.url.match(/\/issues\/(\d+)$/)
     if (!match) continue
     const ref: IssueRef = { repo: n.repository.full_name, number: parseInt(match[1], 10) }
@@ -291,6 +293,12 @@ async function hydrate(refs: IssueRef[]): Promise<void> {
   for (let i = 0; i < batch.length; i++) {
     const issue = data[`x${i}`]?.issue
     if (!issue) continue
+    if (issue.state !== 'OPEN') {
+      threadByNode.delete(issue.id)
+      pendingThreadIds.delete(refKey(batch[i]))
+      removeCachedRow(issue.id)
+      continue
+    }
     const row = toRow(issue)
     const threadId = pendingThreadIds.get(refKey(batch[i]))
     if (threadId) {
@@ -313,9 +321,12 @@ async function reconcile(): Promise<void> {
     }
   }
   const configured = settingsRepo()
-  const query = configured
-    ? `is:issue repo:${configured} involves:@me state:open sort:updated-desc`
-    : 'is:issue involves:@me state:open sort:updated-desc'
+  if (!configured) {
+    clearCachedRows()
+    emitRows()
+    return
+  }
+  const query = `is:issue repo:${configured} state:open sort:updated-desc`
   const rows: CachedRow[] = []
   const keep = new Set<string>()
   let after: string | null = null
