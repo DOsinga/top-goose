@@ -8,6 +8,8 @@ const client = vi.hoisted(() => ({
   restSend: vi.fn(),
 }))
 
+const projects = vi.hoisted(() => ({ extractBoardFields: vi.fn() }))
+
 const store = vi.hoisted(() => ({
   rows: [] as CachedRow[],
   clearCachedRows: vi.fn(),
@@ -31,7 +33,7 @@ vi.mock('../src/main/github/client', () => ({
   restSend: client.restSend,
 }))
 
-vi.mock('../src/main/github/projects', () => ({ extractBoardFields: vi.fn() }))
+vi.mock('../src/main/github/projects', () => projects)
 
 vi.mock('../src/main/store', () => ({
   ...store,
@@ -59,19 +61,19 @@ function row(kind: 'issue' | 'pullRequest', nodeId: string, number: number): Cac
     commentCount: 0,
     updatedAt: '2026-01-01T00:00:00Z',
     hydratedAt: '2026-01-01T00:00:00Z',
+    linkedIssues: kind === 'pullRequest' ? [] : undefined,
   }
 }
 
 async function flush(): Promise<void> {
-  await Promise.resolve()
-  await Promise.resolve()
-  await Promise.resolve()
+  for (let i = 0; i < 10; i++) await Promise.resolve()
 }
 
 beforeEach(() => {
   vi.useFakeTimers()
   store.rows = []
   for (const mock of Object.values(client)) mock.mockReset()
+  projects.extractBoardFields.mockReset()
   for (const value of Object.values(store)) if (typeof value === 'function' && 'mockReset' in value) value.mockReset()
   client.budgetDegraded.mockReturnValue(false)
   client.graphql.mockResolvedValue({
@@ -178,5 +180,72 @@ describe('GitHub activity loops', () => {
 
     const hydrationQueries = client.graphql.mock.calls.filter(([query]) => query.includes('x0: repository'))
     expect(hydrationQueries).toHaveLength(1)
+  })
+
+  it('hydrates linked issue board statuses for pull request filters', async () => {
+    store.repoConfig.mockReturnValue({
+      repo: 'owner/repo',
+      path: '',
+      useWorktrees: false,
+      board: {
+        projectId: 'project-1',
+        projectTitle: 'Board',
+        statusFieldId: 'status-field',
+        snoozeFieldId: 'snooze-field',
+        statusOptions: {},
+      },
+    })
+    projects.extractBoardFields.mockReturnValue({ status: 'Inbox' })
+    client.graphql.mockImplementation(async (query: string, variables: { q?: string }) => {
+      if (query.includes('x0: repository')) {
+        return {
+          x0: {
+            pullRequest: {
+              id: 'pr-node',
+              number: 2,
+              title: 'External contribution',
+              author: { login: 'contributor' },
+              assignees: { nodes: [] },
+              state: 'OPEN',
+              createdAt: '2026-01-01T00:00:00Z',
+              updatedAt: '2026-01-01T00:00:00Z',
+              isDraft: false,
+              reviewDecision: null,
+              reviewRequests: { nodes: [] },
+              repository: { nameWithOwner: 'owner/repo' },
+              comments: { totalCount: 0, nodes: [] },
+              closingIssuesReferences: {
+                nodes: [
+                  {
+                    number: 12,
+                    projectItems: {
+                      nodes: [{ project: { id: 'project-1' }, fieldValues: { nodes: [] } }],
+                    },
+                  },
+                ],
+              },
+            },
+          },
+        }
+      }
+      return {
+        search: {
+          nodes: variables.q?.startsWith('is:pr')
+            ? [{ id: 'pr-node', number: 2, updatedAt: '2026-01-01T00:00:00Z' }]
+            : [],
+          pageInfo: { hasNextPage: false, endCursor: null },
+        },
+      }
+    })
+
+    activity.start()
+    await flush()
+
+    expect(store.putCachedRows).toHaveBeenCalledWith([
+      expect.objectContaining({
+        nodeId: 'pr-node',
+        linkedIssues: [{ number: 12, workflowStatus: 'Inbox' }],
+      }),
+    ])
   })
 })

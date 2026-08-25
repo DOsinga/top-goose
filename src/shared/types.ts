@@ -73,6 +73,7 @@ export type CachedRow = {
   /** a Goose draft is waiting for this issue */
   hasPendingDraft?: boolean
   isDraft?: boolean
+  linkedIssues?: { number: number; workflowStatus?: string }[]
   reviewDecision?: 'APPROVED' | 'CHANGES_REQUESTED' | 'REVIEW_REQUIRED'
   reviewRequestedFrom?: string[]
 }

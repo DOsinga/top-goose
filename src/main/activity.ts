@@ -181,7 +181,25 @@ function findCachedByRef(ref: ConversationRef): CachedRow | undefined {
 let hasProjectScope = true
 
 function rowFragment(): string {
-  const projectItems = hasProjectScope
+  return `
+fragment RowFields on Issue {
+  id
+  number
+  title
+  author { login }
+  assignees(first: 10) { nodes { login } }
+  state
+  updatedAt
+  repository { nameWithOwner }
+  comments(last: 1) {
+    totalCount
+    nodes { author { login } body }
+  }${projectItemsSelection()}
+}`
+}
+
+function projectItemsSelection(): string {
+  return hasProjectScope
     ? `
   projectItems(first: 10) {
     nodes {
@@ -196,33 +214,22 @@ function rowFragment(): string {
     }
   }`
     : ''
-  return `
-fragment RowFields on Issue {
-  id
-  number
-  title
-  author { login }
-  assignees(first: 10) { nodes { login } }
-  state
-  updatedAt
-  repository { nameWithOwner }
-  comments(last: 1) {
-    totalCount
-    nodes { author { login } body }
-  }${projectItems}
-}`
 }
 
-/** Run a RowFields query, downgrading to the no-projects fragment on a scope error. */
-async function rowQuery<T>(build: (fragment: string) => string, vars: Record<string, unknown>): Promise<T> {
+async function projectAwareQuery<T>(build: () => string, vars: Record<string, unknown>): Promise<T> {
   try {
-    return await graphql<T>(build(rowFragment()), vars)
+    return await graphql<T>(build(), vars)
   } catch (err) {
     if (!hasProjectScope || !isProjectScopeError(err)) throw err
     hasProjectScope = false
     console.warn('[graphql] token lacks read:project; continuing without board fields')
-    return await graphql<T>(build(rowFragment()), vars)
+    return await graphql<T>(build(), vars)
   }
+}
+
+/** Run a RowFields query, downgrading to the no-projects fragment on a scope error. */
+async function rowQuery<T>(build: (fragment: string) => string, vars: Record<string, unknown>): Promise<T> {
+  return await projectAwareQuery(() => build(rowFragment()), vars)
 }
 
 type GqlIssueRow = {
@@ -260,6 +267,9 @@ type GqlPullRequestRow = {
   }
   repository: { nameWithOwner: string }
   comments: { totalCount: number; nodes: { author: { login: string } | null; body: string }[] }
+  closingIssuesReferences: {
+    nodes: { number: number; projectItems?: GqlIssueRow['projectItems'] }[]
+  }
 }
 
 function pullRequestRowFragment(): string {
@@ -288,22 +298,27 @@ fragment PullRequestRowFields on PullRequest {
     totalCount
     nodes { author { login } body }
   }
+  closingIssuesReferences(first: 10) {
+    nodes {
+      number${projectItemsSelection()}
+    }
+  }
 }`
+}
+
+function boardFields(
+  repo: string,
+  projectItems: GqlIssueRow['projectItems'],
+): { status?: string; snoozedUntil?: string } {
+  const config = repoConfig(repo)
+  if (!config?.board || !projectItems) return {}
+  const item = projectItems.nodes.find((node) => node.project.id === config.board!.projectId)
+  return item ? extractBoardFields(config.board, item.fieldValues.nodes) : {}
 }
 
 function toRow(issue: GqlIssueRow): CachedRow {
   const repo = issue.repository.nameWithOwner
-  const config = repoConfig(repo)
-  let workflowStatus: string | undefined
-  let snoozedUntil: string | undefined
-  if (config?.board && issue.projectItems) {
-    const item = issue.projectItems.nodes.find((n) => n.project.id === config.board!.projectId)
-    if (item) {
-      const fields = extractBoardFields(config.board, item.fieldValues.nodes)
-      workflowStatus = fields.status
-      snoozedUntil = fields.snoozedUntil
-    }
-  }
+  const fields = boardFields(repo, issue.projectItems)
   const last = issue.comments.nodes[0]
   const existing = getCachedRow(issue.id)
   return {
@@ -315,8 +330,8 @@ function toRow(issue: GqlIssueRow): CachedRow {
     author: issue.author?.login ?? 'ghost',
     assignees: issue.assignees.nodes.map((a) => a.login),
     state: issue.state.toLowerCase(),
-    workflowStatus,
-    snoozedUntil,
+    workflowStatus: fields.status,
+    snoozedUntil: fields.snoozedUntil,
     lastComment: last
       ? { author: last.author?.login ?? 'ghost', snippet: last.body.replace(/\s+/g, ' ').slice(0, 120) }
       : undefined,
@@ -331,9 +346,10 @@ function toRow(issue: GqlIssueRow): CachedRow {
 function toPullRequestRow(pullRequest: GqlPullRequestRow): CachedRow {
   const last = pullRequest.comments.nodes[0]
   const existing = getCachedRow(pullRequest.id)
+  const repo = pullRequest.repository.nameWithOwner
   return {
     kind: 'pullRequest',
-    repo: pullRequest.repository.nameWithOwner,
+    repo,
     issueNumber: pullRequest.number,
     nodeId: pullRequest.id,
     title: pullRequest.title,
@@ -342,6 +358,10 @@ function toPullRequestRow(pullRequest: GqlPullRequestRow): CachedRow {
     state: pullRequest.state.toLowerCase(),
     createdAt: pullRequest.createdAt,
     isDraft: pullRequest.isDraft,
+    linkedIssues: pullRequest.closingIssuesReferences.nodes.map((issue) => ({
+      number: issue.number,
+      workflowStatus: boardFields(repo, issue.projectItems).status,
+    })),
     reviewDecision: pullRequest.reviewDecision ?? undefined,
     reviewRequestedFrom: pullRequest.reviewRequests.nodes.flatMap(({ requestedReviewer }) => {
       if (!requestedReviewer) return []
@@ -428,8 +448,8 @@ async function hydratePullRequests(refs: ConversationRef[], currentGeneration: n
       })
       .join('\n')
     const varDefs = batch.map((_, i) => `$o${i}: String!, $n${i}: String!, $i${i}: Int!`).join(', ')
-    const data = await graphql<Record<string, { pullRequest: GqlPullRequestRow | null } | null>>(
-      `query (${varDefs}) { ${selections} } ${pullRequestRowFragment()}`,
+    const data = await projectAwareQuery<Record<string, { pullRequest: GqlPullRequestRow | null } | null>>(
+      () => `query (${varDefs}) { ${selections} } ${pullRequestRowFragment()}`,
       vars,
     )
     if (currentGeneration !== generation) return
@@ -474,7 +494,12 @@ async function reconcile(currentGeneration: number, forceHydration = false): Pro
   const keep = new Set(discovered.map((conversation) => conversation.nodeId))
   const changed = discovered.filter((conversation) => {
     const cached = getCachedRow(conversation.nodeId)
-    return forceHydration || !cached || cached.updatedAt !== conversation.updatedAt
+    return (
+      forceHydration ||
+      !cached ||
+      cached.updatedAt !== conversation.updatedAt ||
+      (conversation.kind === 'pullRequest' && !('linkedIssues' in cached))
+    )
   })
   await hydrate(changed, currentGeneration)
   if (currentGeneration !== generation) return

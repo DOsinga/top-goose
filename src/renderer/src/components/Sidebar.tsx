@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { isUnsolicitedPullRequest } from '../../../shared/pullRequestFilters'
 import type { CachedRow, ConversationKind } from '../../../shared/types'
 import {
   useStore,
@@ -258,6 +259,7 @@ function PullRequestFilters({ rows }: { rows: CachedRow[] }): React.JSX.Element 
     assigned: (row) => includesLogin(row.assignees, login),
     authored: (row) => row.author?.toLowerCase() === login?.toLowerCase(),
     olderThan7Days: (row) => isOlderThanSevenDays(row),
+    unsolicited: isUnsolicitedPullRequest,
   }
   const passesState: Record<PullRequestStateFilter, (row: CachedRow) => boolean> = {
     ready: (row) => !row.isDraft,
@@ -269,7 +271,7 @@ function PullRequestFilters({ rows }: { rows: CachedRow[] }): React.JSX.Element 
   return (
     <FilterArea>
       <div className="flex flex-wrap gap-1">
-        {(['reviewRequested', 'assigned', 'authored', 'olderThan7Days'] as const).map((filter) => (
+        {(['reviewRequested', 'assigned', 'authored', 'olderThan7Days', 'unsolicited'] as const).map((filter) => (
           <FilterPill
             key={filter}
             label={
@@ -342,6 +344,7 @@ function filterPullRequests(
     assigned: (row) => includesLogin(row.assignees, login),
     authored: (row) => row.author?.toLowerCase() === login?.toLowerCase(),
     olderThan7Days: (row) => isOlderThanSevenDays(row),
+    unsolicited: isUnsolicitedPullRequest,
   }
   const passesState: Record<PullRequestStateFilter, (row: CachedRow) => boolean> = {
     ready: (row) => !row.isDraft,
