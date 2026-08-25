@@ -33,7 +33,7 @@ type GooseChat = {
 }
 
 export type SidebarFilter = 'unread' | 'unreplied' | 'assigned'
-export type PullRequestFilter = 'reviewRequested' | 'assigned' | 'authored'
+export type PullRequestFilter = 'reviewRequested' | 'assigned' | 'authored' | 'olderThan7Days'
 export type PullRequestStateFilter = 'ready' | 'draft' | 'approved' | 'changesRequested' | 'reviewRequired'
 
 export type State = {

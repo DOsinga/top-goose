@@ -65,6 +65,7 @@ export type CachedRow = {
   lastComment?: { author: string; snippet: string }
   commentCount: number
   commentCountAtRead?: number
+  createdAt?: string
   updatedAt: string
   hydratedAt: string
   /** GitHub notification thread says this issue has unread activity */

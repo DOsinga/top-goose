@@ -134,6 +134,7 @@ function PullRequestFilters({ rows }: { rows: CachedRow[] }): React.JSX.Element 
     reviewRequested: (row) => includesLogin(row.reviewRequestedFrom, login),
     assigned: (row) => includesLogin(row.assignees, login),
     authored: (row) => row.author?.toLowerCase() === login?.toLowerCase(),
+    olderThan7Days: (row) => isOlderThanSevenDays(row),
   }
   const passesState: Record<PullRequestStateFilter, (row: CachedRow) => boolean> = {
     ready: (row) => !row.isDraft,
@@ -145,10 +146,16 @@ function PullRequestFilters({ rows }: { rows: CachedRow[] }): React.JSX.Element 
   return (
     <FilterArea>
       <div className="flex flex-wrap gap-1">
-        {(['reviewRequested', 'assigned', 'authored'] as const).map((filter) => (
+        {(['reviewRequested', 'assigned', 'authored', 'olderThan7Days'] as const).map((filter) => (
           <FilterPill
             key={filter}
-            label={filter === 'reviewRequested' ? 'review requested' : filter}
+            label={
+              filter === 'reviewRequested'
+                ? 'review requested'
+                : filter === 'olderThan7Days'
+                  ? 'older than 7d'
+                  : filter
+            }
             count={rows.filter(passes[filter]).length}
             active={filters.includes(filter)}
             onClick={() => toggleFilter(filter)}
@@ -211,6 +218,7 @@ function filterPullRequests(
     reviewRequested: (row) => includesLogin(row.reviewRequestedFrom, login),
     assigned: (row) => includesLogin(row.assignees, login),
     authored: (row) => row.author?.toLowerCase() === login?.toLowerCase(),
+    olderThan7Days: (row) => isOlderThanSevenDays(row),
   }
   const passesState: Record<PullRequestStateFilter, (row: CachedRow) => boolean> = {
     ready: (row) => !row.isDraft,
@@ -222,6 +230,10 @@ function filterPullRequests(
   return rows.filter(
     (row) => filters.every((filter) => passes[filter](row)) && (!stateFilter || passesState[stateFilter](row)),
   )
+}
+
+function isOlderThanSevenDays(row: CachedRow): boolean {
+  return !!row.createdAt && new Date(row.createdAt).getTime() < Date.now() - 7 * 24 * 60 * 60 * 1000
 }
 
 function FilterPill({

@@ -235,6 +235,7 @@ type GqlPullRequestRow = {
   author: { login: string } | null
   assignees: { nodes: { login: string }[] }
   state: string
+  createdAt: string
   updatedAt: string
   isDraft: boolean
   reviewDecision: CachedRow['reviewDecision'] | null
@@ -254,6 +255,7 @@ fragment PullRequestRowFields on PullRequest {
   author { login }
   assignees(first: 10) { nodes { login } }
   state
+  createdAt
   updatedAt
   isDraft
   reviewDecision
@@ -322,6 +324,7 @@ function toPullRequestRow(pullRequest: GqlPullRequestRow): CachedRow {
     author: pullRequest.author?.login ?? 'ghost',
     assignees: pullRequest.assignees.nodes.map((assignee) => assignee.login),
     state: pullRequest.state.toLowerCase(),
+    createdAt: pullRequest.createdAt,
     isDraft: pullRequest.isDraft,
     reviewDecision: pullRequest.reviewDecision ?? undefined,
     reviewRequestedFrom: pullRequest.reviewRequests.nodes.flatMap(({ requestedReviewer }) => {

@@ -74,7 +74,7 @@ Workflow states such as `Inbox`, `Needs Information`, `Triaged`, and `Ready` are
 
 The sidebar can filter to one workflow state at a time. This filter combines with the unread, unreplied, and assigned filters.
 
-Pull requests have separate filters for review requested, assigned, authored, draft/ready state, and review decision.
+Pull requests have separate filters for review requested, assigned, authored, older than seven days, draft/ready state, and review decision.
 
 This matters for the API design: Projects V2 fields exist only in GraphQL. There is no REST equivalent. Any view that shows workflow state, including the sidebar, requires a GraphQL read.
 
