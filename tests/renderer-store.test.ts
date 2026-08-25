@@ -82,7 +82,20 @@ beforeEach(() => {
     approvalSaving: false,
     composers: {},
     gooseChats: {},
+    gooseInputs: {},
     view: 'main',
+  })
+})
+
+describe('Goose prompt input', () => {
+  it('stores a separate draft prompt for each conversation', () => {
+    useStore.getState().setGooseInput('issue-a', 'Fix the issue')
+    useStore.getState().setGooseInput('pr-b', 'Review the PR')
+
+    expect(useStore.getState().gooseInputs).toEqual({
+      'issue-a': 'Fix the issue',
+      'pr-b': 'Review the PR',
+    })
   })
 })
 

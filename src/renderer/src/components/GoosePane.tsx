@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import type { GooseMessage, GooseToolCall } from '../../../shared/types'
+import { shouldSubmitGoosePrompt } from '../gooseInput'
 import { useStore } from '../store'
 import { Markdown } from './Markdown'
 
@@ -21,7 +22,8 @@ export function GoosePane(): React.JSX.Element {
   const chat = useStore((s) => (selected ? s.gooseChats[selected] : undefined))
   const promptGoose = useStore((s) => s.promptGoose)
   const cancelGoose = useStore((s) => s.cancelGoose)
-  const [inputs, setInputs] = useState<Record<string, string>>({})
+  const input = useStore((s) => (selected ? s.gooseInputs[selected] ?? '' : ''))
+  const setGooseInput = useStore((s) => s.setGooseInput)
   const endRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -31,12 +33,10 @@ export function GoosePane(): React.JSX.Element {
   if (!selected) {
     return <div className="w-96 shrink-0 border-l border-gray-200 bg-gray-50" />
   }
-  const input = inputs[selected] ?? ''
-
   const send = (): void => {
     const text = input.trim()
     if (!text || !chat?.loaded || chat.noWorkspace || chat.busy) return
-    setInputs((current) => ({ ...current, [selected]: '' }))
+    setGooseInput(selected, '')
     void promptGoose(selected, text)
   }
 
@@ -76,12 +76,12 @@ export function GoosePane(): React.JSX.Element {
       <div className="shrink-0 border-t border-gray-200 p-3">
         <textarea
           className="h-16 w-full resize-none rounded-lg border border-gray-300 p-2 text-[13px] focus:border-goose focus:outline-none"
-          placeholder="Ask Goose… (⌘↵ to send)"
+          placeholder="Ask Goose… (Enter to send, Shift+Enter for newline)"
           value={input}
           disabled={!chat?.loaded || chat.noWorkspace || chat.busy}
-          onChange={(e) => setInputs((current) => ({ ...current, [selected]: e.target.value }))}
+          onChange={(e) => setGooseInput(selected, e.target.value)}
           onKeyDown={(e) => {
-            if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+            if (shouldSubmitGoosePrompt(e.key, e.shiftKey, e.nativeEvent.isComposing)) {
               e.preventDefault()
               send()
             }

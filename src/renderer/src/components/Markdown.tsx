@@ -1,6 +1,6 @@
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { extractCodexReviewHeading, type CodexReviewHeading } from '../codexReview'
+import { codexReviewPrompt, extractCodexReviewHeading, type CodexReviewHeading } from '../codexReview'
 import { githubImageFromHtml } from '../githubImages'
 import { useStore } from '../store'
 
@@ -64,15 +64,25 @@ function remarkIssueRefs({ repo }: { repo?: string }) {
   }
 }
 
-export function Markdown({ children }: { children: string }): React.JSX.Element {
+export function Markdown({ children, offerToGoose = false }: { children: string; offerToGoose?: boolean }): React.JSX.Element {
   const repo = useStore(
     (s) =>
       s.issue?.repo ?? s.pullRequest?.repo ?? s.rows.find((r) => r.nodeId === s.selectedNodeId)?.repo,
   )
+  const selected = useStore((state) => state.selectedNodeId)
+  const gooseInput = useStore((state) => (selected ? state.gooseInputs[selected] ?? '' : ''))
+  const setGooseInput = useStore((state) => state.setGooseInput)
   const reviewHeading = extractCodexReviewHeading(children)
+  const copyToGoose =
+    offerToGoose && selected && reviewHeading
+      ? () => {
+          const prompt = codexReviewPrompt(reviewHeading)
+          setGooseInput(selected, gooseInput.trim() ? `${gooseInput}\n\n${prompt}` : prompt)
+        }
+      : undefined
   return (
     <div className="prose-gh text-sm">
-      {reviewHeading && <ReviewHeading heading={reviewHeading} />}
+      {reviewHeading && <ReviewHeading heading={reviewHeading} copyToGoose={copyToGoose} />}
       <ReactMarkdown remarkPlugins={[remarkGfm, remarkGithubImages, [remarkIssueRefs, { repo }]]}>
         {reviewHeading?.body ?? children}
       </ReactMarkdown>
@@ -87,13 +97,30 @@ const priorityClasses: Record<CodexReviewHeading['priority'], string> = {
   P3: 'border-blue-200 bg-blue-50 text-blue-800',
 }
 
-function ReviewHeading({ heading }: { heading: CodexReviewHeading }): React.JSX.Element {
+function ReviewHeading({
+  heading,
+  copyToGoose,
+}: {
+  heading: CodexReviewHeading
+  copyToGoose?: () => void
+}): React.JSX.Element {
   return (
     <div className={`mb-2 flex items-start gap-2 rounded-md border px-2.5 py-2 ${priorityClasses[heading.priority]}`}>
       <span className="shrink-0 rounded bg-current/10 px-1.5 py-0.5 text-[11px] font-bold leading-4">
         {heading.priority}
       </span>
       <span className="font-semibold leading-5">{heading.title}</span>
+      {copyToGoose && (
+        <button
+          type="button"
+          className="ml-auto shrink-0 rounded px-1.5 py-0.5 text-[11px] font-semibold hover:bg-current/10"
+          title="Copy this finding to the Goose prompt"
+          aria-label="Copy this Codex finding to the Goose prompt"
+          onClick={copyToGoose}
+        >
+          ⇒ Goose
+        </button>
+      )}
     </div>
   )
 }

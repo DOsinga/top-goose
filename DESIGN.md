@@ -155,6 +155,8 @@ A private Goose conversation associated with the current GitHub issue.
 
 Nothing written here is posted to GitHub automatically.
 
+Enter submits the Goose prompt; Shift-Enter inserts a newline. Codex review findings from the Codex bot include an explicit action that copies the cleaned finding into the Goose prompt without sending it. Existing prompt text is preserved.
+
 Typical uses:
 
 - "What is Jasper objecting to?"

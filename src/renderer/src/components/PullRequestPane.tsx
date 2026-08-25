@@ -5,6 +5,7 @@ import type {
   PullRequestReview,
   PullRequestReviewThread,
 } from '../../../shared/types'
+import { isCodexReviewer } from '../codexReview'
 import { useStore } from '../store'
 import { Markdown } from './Markdown'
 import { ReplyComposer } from './ReplyComposer'
@@ -205,7 +206,7 @@ function ReviewCard({ review }: { review: PullRequestReview }): React.JSX.Elemen
           <span className="text-[11px] text-gray-400">{new Date(review.submittedAt).toLocaleString()}</span>
         )}
       </div>
-      {review.body && <Markdown>{review.body}</Markdown>}
+      {review.body && <Markdown offerToGoose={isCodexReviewer(review.author)}>{review.body}</Markdown>}
     </div>
   )
 }
@@ -265,7 +266,7 @@ function Bubble({
         <span className="text-[13px] font-semibold">{author}</span>
         <span className="text-[11px] text-gray-400">{new Date(at).toLocaleString()}</span>
       </div>
-      <Markdown>{body}</Markdown>
+      <Markdown offerToGoose={isCodexReviewer(author)}>{body}</Markdown>
     </div>
   )
 }

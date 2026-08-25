@@ -56,6 +56,7 @@ export type State = {
   approvalSaving: boolean
   composers: Record<string, ComposerState>
   gooseChats: Record<string, GooseChat>
+  gooseInputs: Record<string, string>
   budget: RateBudget | null
   view: 'main' | 'settings'
   generation: number
@@ -75,6 +76,7 @@ export type State = {
   acceptOfferedDraft: (nodeId: string) => string | null
   discardOfferedDraft: (nodeId: string) => void
   promptGoose: (nodeId: string, text: string) => Promise<void>
+  setGooseInput: (nodeId: string, text: string) => void
   cancelGoose: (nodeId: string) => void
   setView: (view: 'main' | 'settings') => void
   setAuth: (auth: AuthState) => void
@@ -117,6 +119,7 @@ export const useStore = create<State>((set, get) => ({
   approvalSaving: false,
   composers: {},
   gooseChats: {},
+  gooseInputs: {},
   budget: null,
   view: 'main',
   generation: 0,
@@ -151,6 +154,7 @@ export const useStore = create<State>((set, get) => ({
           approvalSaving: false,
           composers: {},
           gooseChats: {},
+          gooseInputs: {},
           generation: state.generation + 1,
         })),
       ),
@@ -591,6 +595,10 @@ export const useStore = create<State>((set, get) => ({
     }
   },
 
+  setGooseInput: (nodeId, text) => {
+    set((state) => ({ gooseInputs: { ...state.gooseInputs, [nodeId]: text } }))
+  },
+
   cancelGoose: (nodeId) => {
     void api.invoke('session:cancel', nodeId)
   },
@@ -616,6 +624,7 @@ export const useStore = create<State>((set, get) => ({
         approvalSaving: false,
         composers: {},
         gooseChats: {},
+        gooseInputs: {},
         generation: state.generation + 1,
       }
     }),

@@ -18,3 +18,18 @@ export function extractCodexReviewHeading(markdown: string): CodexReviewHeading 
     body: markdown.slice(match[0].length),
   }
 }
+
+export function codexReviewPrompt(heading: CodexReviewHeading): string {
+  return [
+    'Fix this Codex review finding:',
+    '',
+    `[${heading.priority}] ${heading.title}`,
+    heading.body.trim(),
+  ]
+    .filter((part, index) => part || index === 1)
+    .join('\n')
+}
+
+export function isCodexReviewer(author: string): boolean {
+  return author.toLowerCase() === 'chatgpt-codex-connector[bot]'
+}

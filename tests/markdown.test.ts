@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { extractCodexReviewHeading } from '../src/renderer/src/codexReview'
+import { codexReviewPrompt, extractCodexReviewHeading, isCodexReviewer } from '../src/renderer/src/codexReview'
 import { githubImageFromHtml } from '../src/renderer/src/githubImages'
 
 describe('GitHub screenshot HTML', () => {
@@ -58,5 +58,23 @@ describe('Codex review headings', () => {
 
   it('leaves ordinary Markdown alone', () => {
     expect(extractCodexReviewHeading('**P2** A normal bold paragraph')).toBeNull()
+  })
+
+  it('turns a finding into an actionable Goose prompt', () => {
+    expect(
+      codexReviewPrompt({
+        priority: 'P2',
+        title: 'Handle small context windows',
+        body: '\nThe implementation assumes a larger window.\n',
+      }),
+    ).toBe(
+      'Fix this Codex review finding:\n\n[P2] Handle small context windows\nThe implementation assumes a larger window.',
+    )
+  })
+
+  it('offers the action only for the Codex bot account', () => {
+    expect(isCodexReviewer('chatgpt-codex-connector[bot]')).toBe(true)
+    expect(isCodexReviewer('chatgpt-codex-connector')).toBe(false)
+    expect(isCodexReviewer('contributor')).toBe(false)
   })
 })
