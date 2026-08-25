@@ -64,9 +64,9 @@ function remarkIssueRefs({ repo }: { repo?: string }) {
 }
 
 export function Markdown({ children }: { children: string }): React.JSX.Element {
-  // both panes render in the context of the selected issue's repo
   const repo = useStore(
-    (s) => s.issue?.repo ?? s.rows.find((r) => r.nodeId === s.selectedNodeId)?.repo,
+    (s) =>
+      s.issue?.repo ?? s.pullRequest?.repo ?? s.rows.find((r) => r.nodeId === s.selectedNodeId)?.repo,
   )
   return (
     <div className="prose-gh text-sm">

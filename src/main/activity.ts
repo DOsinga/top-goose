@@ -4,6 +4,7 @@ import { extractBoardFields } from './github/projects'
 import {
   clearCachedRows,
   clearPendingDrafts,
+  clearSearchedRows,
   getCachedRow,
   getCachedRows,
   hasPendingDraft,
@@ -79,6 +80,7 @@ export function reset(): void {
   pendingThreadIds.clear()
   hasProjectScope = true
   clearCachedRows()
+  clearSearchedRows()
   clearPendingDrafts()
   emitRows()
 }

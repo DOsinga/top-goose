@@ -8,7 +8,7 @@ import type {
 import { mcpServerConfig } from '../mcp/draftServer'
 import {
   getAuthMeta,
-  getCachedRow,
+  getConversationRow,
   getIssueSession,
   repoConfig,
   saveIssueSession,
@@ -20,8 +20,8 @@ import { buildContext, promptWithContext, visibleUserMessage } from './contextSy
 import { ensureWorktree } from './worktrees'
 
 /**
- * One persistent Goose session per GitHub issue. The mapping is keyed on the
- * issue node ID and owned by Top Goose; Goose owns the conversation history.
+ * One persistent Goose session per GitHub issue or pull request. The mapping
+ * is keyed on the GitHub node ID; Goose owns the conversation history.
  *
  * Opening an issue never causes an agent turn: if a mapping exists the
  * session is loaded (history replayed), otherwise the session is created
@@ -197,7 +197,7 @@ export function openIssueSession(issueNodeId: string): Promise<GooseSessionView>
 }
 
 async function openIssueSessionInner(issueNodeId: string): Promise<GooseSessionView> {
-  const row = getCachedRow(issueNodeId)
+  const row = getConversationRow(issueNodeId)
   const config = row ? repoConfig(row.repo) : undefined
   const noWorkspace = !config?.path
 
@@ -288,8 +288,8 @@ async function ensureSession(issueNodeId: string, live: LiveSession): Promise<Is
   const existing = getIssueSession(issueNodeId)
   if (existing && live.sessionId) return existing
 
-  const row = getCachedRow(issueNodeId)
-  if (!row) throw new Error('issue not in sidebar cache')
+  const row = getConversationRow(issueNodeId)
+  if (!row) throw new Error('unknown GitHub conversation')
 
   if (existing) {
     // mapping exists but the session was never loaded this run

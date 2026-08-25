@@ -131,6 +131,20 @@ export function getCachedRow(nodeId: string): CachedRow | undefined {
   return row ? { ...row, kind: row.kind ?? 'issue' } : undefined
 }
 
+const searchedRows = new Map<string, CachedRow>()
+
+export function putSearchedRows(rows: CachedRow[]): void {
+  for (const row of rows) searchedRows.set(row.nodeId, row)
+}
+
+export function getConversationRow(nodeId: string): CachedRow | undefined {
+  return getCachedRow(nodeId) ?? searchedRows.get(nodeId)
+}
+
+export function clearSearchedRows(): void {
+  searchedRows.clear()
+}
+
 export function putCachedRows(rows: CachedRow[]): void {
   sidebarCache().update((c) => {
     const next = { ...c.rows }

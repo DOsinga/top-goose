@@ -38,6 +38,7 @@ export type InvokeMap = {
   // sidebar
   'sidebar:rows': () => CachedRow[]
   'sidebar:refresh': () => void
+  'search:conversations': (query: string) => CachedRow[]
 
   // issue detail
   'issue:open': (nodeId: string) => IssueDetail

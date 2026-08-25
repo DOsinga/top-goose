@@ -76,6 +76,8 @@ The sidebar can filter to one workflow state at a time. This filter combines wit
 
 Pull requests have separate filters for review requested, assigned, authored, older than seven days, draft/ready state, and review decision.
 
+Search uses GitHub's issue and pull request search, scoped to the configured repository. Results can include closed conversations and anything else outside the open-item index. Selecting a result switches to the matching issue or pull request view and opens the normal detail and persistent Goose panes without adding the result to the regular sidebar list.
+
 This matters for the API design: Projects V2 fields exist only in GraphQL. There is no REST equivalent. Any view that shows workflow state, including the sidebar, requires a GraphQL read.
 
 The board also carries a snooze date as a Projects V2 date field. A snoozed issue is de-emphasized in the sidebar until its snooze date passes.

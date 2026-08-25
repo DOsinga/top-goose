@@ -4,7 +4,7 @@ GitHub issues and pull requests as conversations, with a private [Goose](https:/
 
 Issue triage usually means a browser tab per issue and no help from your agent. Top Goose turns a repository's issues into something closer to Slack:
 
-- **Left — channels:** switch between every open issue and every open pull request. Each view has filters suited to it, including PRs older than seven days.
+- **Left — channels:** switch between every open issue and every open pull request. Each view has filters suited to it, including PRs older than seven days. Repository-wide GitHub search also finds closed issues and PRs outside the current list.
 - **Center — the conversation:** issue discussion and triage controls, or PR metadata, checks, review summaries, inline review threads, general comments, and an Approve button.
 - **Right — the goose:** a persistent private Goose conversation scoped to the selected issue or PR, running against your local clone. Goose receives the full public discussion as context and can use `gh` when asked.
 

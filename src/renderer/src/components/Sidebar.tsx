@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import type { CachedRow, ConversationKind } from '../../../shared/types'
 import {
   useStore,
@@ -37,40 +38,162 @@ export function Sidebar(): React.JSX.Element {
   const selected = useStore((state) => state.selectedNodeId)
   const selectIssue = useStore((state) => state.selectIssue)
   const selectPullRequest = useStore((state) => state.selectPullRequest)
+  const setConversationKind = useStore((state) => state.setConversationKind)
   const login = useStore((state) => state.auth?.login)
   const issueFilters = useStore((state) => state.sidebarFilters)
   const workflowStatusFilter = useStore((state) => state.workflowStatusFilter)
   const pullRequestFilters = useStore((state) => state.pullRequestFilters)
   const pullRequestStateFilter = useStore((state) => state.pullRequestStateFilter)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchResults, setSearchResults] = useState<CachedRow[]>([])
+  const [searchLoading, setSearchLoading] = useState(false)
+  const [searchError, setSearchError] = useState<string | null>(null)
+  const searching = !!searchQuery.trim()
   const visible =
     kind === 'issue'
       ? filterIssues(rows, issueFilters, workflowStatusFilter, login)
       : filterPullRequests(rows, pullRequestFilters, pullRequestStateFilter, login)
 
+  useEffect(() => {
+    const query = searchQuery.trim()
+    if (!query) {
+      setSearchResults([])
+      setSearchLoading(false)
+      setSearchError(null)
+      return
+    }
+    let active = true
+    setSearchLoading(true)
+    setSearchError(null)
+    const timer = window.setTimeout(() => {
+      void window.topGoose
+        .invoke('search:conversations', query)
+        .then((results) => {
+          if (active) setSearchResults(results)
+        })
+        .catch((error: Error) => {
+          if (active) setSearchError(error.message)
+        })
+        .finally(() => {
+          if (active) setSearchLoading(false)
+        })
+    }, 300)
+    return () => {
+      active = false
+      window.clearTimeout(timer)
+    }
+  }, [searchQuery])
+
+  const openSearchResult = (row: CachedRow): void => {
+    setConversationKind(row.kind)
+    if (row.kind === 'issue') void selectIssue(row.nodeId)
+    else void selectPullRequest(row.nodeId)
+  }
+
   return (
     <div className="flex w-72 shrink-0 flex-col border-r border-gray-200 bg-gray-50">
-      {kind === 'issue' ? <IssueFilters rows={rows} /> : <PullRequestFilters rows={rows} />}
+      <SearchBox query={searchQuery} setQuery={setSearchQuery} />
+      {!searching && (kind === 'issue' ? <IssueFilters rows={rows} /> : <PullRequestFilters rows={rows} />)}
       <div className="flex-1 overflow-y-auto">
-        {visible.length === 0 && (
-          <div className="p-4 text-sm text-gray-500">
-            {rows.length === 0
-              ? `No open ${kind === 'issue' ? 'issues' : 'pull requests'} in this repository.`
-              : 'Nothing matches the active filters.'}
-          </div>
-        )}
-        {visible.map((row) => (
-          <SidebarRow
-            key={row.nodeId}
-            row={row}
-            selected={row.nodeId === selected}
-            onClick={() =>
-              kind === 'issue' ? void selectIssue(row.nodeId) : void selectPullRequest(row.nodeId)
-            }
-            kind={kind}
+        {searching ? (
+          <SearchResults
+            rows={searchResults}
+            loading={searchLoading}
+            error={searchError}
+            selected={selected}
+            open={openSearchResult}
           />
-        ))}
+        ) : (
+          <>
+            {visible.length === 0 && (
+              <div className="p-4 text-sm text-gray-500">
+                {rows.length === 0
+                  ? `No open ${kind === 'issue' ? 'issues' : 'pull requests'} in this repository.`
+                  : 'Nothing matches the active filters.'}
+              </div>
+            )}
+            {visible.map((row) => (
+              <SidebarRow
+                key={row.nodeId}
+                row={row}
+                selected={row.nodeId === selected}
+                onClick={() =>
+                  kind === 'issue' ? void selectIssue(row.nodeId) : void selectPullRequest(row.nodeId)
+                }
+                kind={kind}
+              />
+            ))}
+          </>
+        )}
       </div>
     </div>
+  )
+}
+
+function SearchBox({ query, setQuery }: { query: string; setQuery: (query: string) => void }): React.JSX.Element {
+  return (
+    <div className="relative shrink-0 border-b border-gray-200 p-2">
+      <input
+        type="search"
+        aria-label="Search GitHub issues and pull requests"
+        className="w-full rounded-lg border border-gray-300 bg-white py-1.5 pl-8 pr-7 text-xs focus:border-accent focus:outline-none"
+        placeholder="Search GitHub…"
+        value={query}
+        onChange={(event) => setQuery(event.target.value)}
+      />
+      <span className="pointer-events-none absolute left-4 top-3.5 text-xs text-gray-400">⌕</span>
+      {query && (
+        <button
+          type="button"
+          aria-label="Clear search"
+          className="absolute right-3 top-2.5 rounded px-1 text-sm text-gray-400 hover:text-gray-700"
+          onClick={() => setQuery('')}
+        >
+          ×
+        </button>
+      )}
+    </div>
+  )
+}
+
+function SearchResults({
+  rows,
+  loading,
+  error,
+  selected,
+  open,
+}: {
+  rows: CachedRow[]
+  loading: boolean
+  error: string | null
+  selected: string | null
+  open: (row: CachedRow) => void
+}): React.JSX.Element {
+  if (loading) return <div className="p-4 text-sm text-gray-400">Searching GitHub…</div>
+  if (error) return <div className="p-4 text-sm text-red-600">Search failed: {error}</div>
+  if (rows.length === 0) return <div className="p-4 text-sm text-gray-500">No GitHub results.</div>
+  return (
+    <>
+      {rows.map((row) => (
+        <button
+          key={row.nodeId}
+          className={`block w-full border-b border-gray-100 px-3 py-2 text-left ${
+            selected === row.nodeId ? 'bg-accent/10' : 'hover:bg-gray-100'
+          }`}
+          onClick={() => open(row)}
+        >
+          <div className="truncate text-[13px] font-medium">{row.title}</div>
+          <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-gray-500">
+            <span className="rounded bg-gray-200 px-1 py-px">
+              {row.kind === 'issue' ? 'issue' : 'PR'} #{row.issueNumber}
+            </span>
+            <span>{row.state}</span>
+            <span className="truncate">by {row.author}</span>
+            <span className="ml-auto shrink-0 text-gray-400">{timeAgo(row.updatedAt)}</span>
+          </div>
+        </button>
+      ))}
+    </>
   )
 }
 
