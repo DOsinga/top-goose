@@ -1,5 +1,6 @@
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { extractCodexReviewHeading, type CodexReviewHeading } from '../codexReview'
 import { githubImageFromHtml } from '../githubImages'
 import { useStore } from '../store'
 
@@ -68,11 +69,31 @@ export function Markdown({ children }: { children: string }): React.JSX.Element 
     (s) =>
       s.issue?.repo ?? s.pullRequest?.repo ?? s.rows.find((r) => r.nodeId === s.selectedNodeId)?.repo,
   )
+  const reviewHeading = extractCodexReviewHeading(children)
   return (
     <div className="prose-gh text-sm">
+      {reviewHeading && <ReviewHeading heading={reviewHeading} />}
       <ReactMarkdown remarkPlugins={[remarkGfm, remarkGithubImages, [remarkIssueRefs, { repo }]]}>
-        {children}
+        {reviewHeading?.body ?? children}
       </ReactMarkdown>
+    </div>
+  )
+}
+
+const priorityClasses: Record<CodexReviewHeading['priority'], string> = {
+  P0: 'border-red-200 bg-red-50 text-red-800',
+  P1: 'border-orange-200 bg-orange-50 text-orange-800',
+  P2: 'border-amber-200 bg-amber-50 text-amber-800',
+  P3: 'border-blue-200 bg-blue-50 text-blue-800',
+}
+
+function ReviewHeading({ heading }: { heading: CodexReviewHeading }): React.JSX.Element {
+  return (
+    <div className={`mb-2 flex items-start gap-2 rounded-md border px-2.5 py-2 ${priorityClasses[heading.priority]}`}>
+      <span className="shrink-0 rounded bg-current/10 px-1.5 py-0.5 text-[11px] font-bold leading-4">
+        {heading.priority}
+      </span>
+      <span className="font-semibold leading-5">{heading.title}</span>
     </div>
   )
 }
