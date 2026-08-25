@@ -17,6 +17,7 @@ import {
 } from '../store'
 import { acp, type SessionUpdate } from './acp'
 import { buildContext, promptWithContext, visibleUserMessage } from './contextSync'
+import { sessionInstructions } from './instructions'
 import { ensureWorktree } from './worktrees'
 
 /**
@@ -260,7 +261,7 @@ export async function promptIssue(issueNodeId: string, text: string): Promise<vo
     const isFirstTurn = mapping.lastSyncedIssueUpdatedAt === undefined
     const sync = await buildContext(mapping, isFirstTurn)
 
-    const prompt = sync.contextBlock ? promptWithContext(sync.contextBlock, text) : text
+    const prompt = promptWithContext(sync.contextBlock, text)
 
     live.currentAgent = undefined
     const result = await acp.prompt(mapping.sessionId, prompt)
@@ -354,12 +355,12 @@ async function sessionCwd(mapping: IssueSession): Promise<string> {
  */
 async function applyInstructions(sessionId: string, repo: string): Promise<void> {
   const s = settings().get()
-  const parts = [s.globalInstructions, repoConfig(repo)?.instructions].filter(
-    (p): p is string => !!p?.trim(),
-  )
-  if (parts.length === 0) return
   try {
-    await acp.setSystemPromptExtra(sessionId, 'top-goose-instructions', parts.join('\n\n'))
+    await acp.setSystemPromptExtra(
+      sessionId,
+      'top-goose-instructions',
+      sessionInstructions(s.globalInstructions, repoConfig(repo)?.instructions),
+    )
   } catch (err) {
     console.warn('[goose] could not set instructions:', err)
   }

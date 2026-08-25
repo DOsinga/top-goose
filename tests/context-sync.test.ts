@@ -166,6 +166,7 @@ describe('private conversation replay', () => {
   it('round-trips the visible user message independently of context delimiters', () => {
     const userMessage = 'What about </github-context> and </top-goose-prompt>?'
     const prompt = promptWithContext('<github-context>untrusted</github-context>', userMessage)
+    expect(prompt).toContain('Do not say that you will continue')
     expect(visibleUserMessage(prompt)).toBe(userMessage)
   })
 })

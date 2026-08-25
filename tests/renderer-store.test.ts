@@ -132,6 +132,28 @@ describe('pull request selection', () => {
     expect(useStore.getState().pullRequest?.viewerReviewState).toBe('APPROVED')
     expect(useStore.getState().approvalSaving).toBe(false)
   })
+
+  it('keeps another pull request session running when navigation changes', async () => {
+    invoke.mockImplementation((channel: string) => {
+      if (channel === 'pullRequest:open') return Promise.resolve(pullRequest('B', 8))
+      if (channel === 'draft:take') return Promise.resolve(null)
+      return Promise.resolve()
+    })
+    useStore.setState({
+      conversationKind: 'pullRequest',
+      selectedNodeId: 'A',
+      pullRequest: pullRequest('A', 7),
+      gooseChats: {
+        A: { messages: [], busy: true, noWorkspace: false, loaded: true },
+        B: { messages: [], busy: false, noWorkspace: false, loaded: true },
+      },
+    })
+
+    await useStore.getState().selectPullRequest('B')
+
+    expect(useStore.getState().gooseChats.A?.busy).toBe(true)
+    expect(invoke).not.toHaveBeenCalledWith('session:cancel', 'A')
+  })
 })
 
 describe('issue selection', () => {

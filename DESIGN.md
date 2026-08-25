@@ -409,6 +409,8 @@ If one exists, it loads or resumes that Goose session.
 
 Merely opening an issue should not cause an agent turn.
 
+Selecting another issue or pull request does not cancel an active turn. ACP updates stay keyed to their originating conversation, the renderer keeps applying them while another conversation is visible, and the sidebar marks conversations where Goose is still working. Session instructions tell Goose to complete available work in the current turn rather than ending with a promise to continue later.
+
 ## First Goose Turn
 
 The first time the user talks to Goose about an issue, Top Goose sends the complete current GitHub context along with the user's message.

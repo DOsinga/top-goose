@@ -270,8 +270,7 @@ export class AcpClient {
 
   /**
    * Per-repo/global instructions. `_goose/unstable/session/system-prompt/set`
-   * may not exist on older binaries; callers treat method-not-found as
-   * "unsupported" and fall back to inlining instructions in turn context.
+   * may not exist on older binaries; method-not-found is treated as unsupported.
    */
   async setSystemPromptExtra(sessionId: string, key: string, text: string): Promise<boolean> {
     try {

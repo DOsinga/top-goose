@@ -397,6 +397,7 @@ function SidebarRow({
   kind: ConversationKind
 }): React.JSX.Element {
   const unread = unreadCount(row)
+  const gooseBusy = useStore((state) => state.gooseChats[row.nodeId]?.busy)
   const snoozed = !!row.snoozedUntil && row.snoozedUntil > new Date().toISOString().slice(0, 10)
   return (
     <button
@@ -409,6 +410,11 @@ function SidebarRow({
         <span className={`min-w-0 flex-1 truncate text-[13px] ${unread !== 0 ? 'font-semibold' : 'font-normal'}`}>
           {row.title}
         </span>
+        {gooseBusy && (
+          <span className="animate-pulse text-[11px]" title="Goose is working in the background">
+            🪿
+          </span>
+        )}
         {row.hasPendingDraft && <span title="Goose drafted a reply">✏️</span>}
         {unread > 0 && (
           <span className="rounded-full bg-accent px-1.5 text-[11px] font-semibold text-white">{unread}</span>
