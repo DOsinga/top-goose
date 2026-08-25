@@ -9,6 +9,7 @@ import * as activity from './activity'
 import { authState, setPat, signOut } from './github/auth'
 import { onBudgetChange, getBudget } from './github/client'
 import { fetchIssueDetail, postComment, setIssueAssignee } from './github/issues'
+import { approvePullRequest, fetchPullRequestDetail } from './github/pullRequests'
 import { listFields, listProjects, setIssueSnooze, setIssueStatus } from './github/projects'
 import { findGoose, invalidateGooseInfo } from './goose/discover'
 import {
@@ -135,7 +136,7 @@ export function registerIpc(): void {
   // ----- issue detail -----
   handle('issue:open', async (nodeId) => {
     const row = getCachedRow(nodeId)
-    if (!row) throw new Error('unknown issue')
+    if (!row || row.kind !== 'issue') throw new Error('unknown issue')
     return fetchIssueDetail(row.repo, row.issueNumber)
   })
   handle('issue:markRead', (nodeId) => activity.markRead(nodeId))
@@ -185,6 +186,33 @@ export function registerIpc(): void {
       activity.applyLocalEdit(nodeId, { snoozedUntil: row.snoozedUntil })
       throw err
     }
+  })
+
+  // ----- pull request detail -----
+  handle('pullRequest:open', async (nodeId) => {
+    const row = getCachedRow(nodeId)
+    if (!row || row.kind !== 'pullRequest') throw new Error('unknown pull request')
+    return fetchPullRequestDetail(row.repo, row.issueNumber)
+  })
+  handle('pullRequest:reply', async (nodeId, body) => {
+    const row = getCachedRow(nodeId)
+    if (!row || row.kind !== 'pullRequest') throw new Error('unknown pull request')
+    const comment = await postComment(row.repo, row.issueNumber, body)
+    activity.applyLocalEdit(nodeId, {
+      commentCount: row.commentCount + 1,
+      commentCountAtRead: row.commentCount + 1,
+      lastComment: { author: comment.author, snippet: comment.body.replace(/\s+/g, ' ').slice(0, 120) },
+      updatedAt: comment.createdAt,
+    })
+    return comment
+  })
+  handle('pullRequest:approve', async (nodeId) => {
+    const row = getCachedRow(nodeId)
+    if (!row || row.kind !== 'pullRequest') throw new Error('unknown pull request')
+    await approvePullRequest(row.repo, row.issueNumber)
+    const pullRequest = await fetchPullRequestDetail(row.repo, row.issueNumber)
+    activity.applyLocalEdit(nodeId, { reviewDecision: pullRequest.reviewDecision })
+    return pullRequest
   })
 
   // ----- board setup -----

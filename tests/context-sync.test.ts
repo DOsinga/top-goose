@@ -9,9 +9,17 @@ const github = vi.hoisted(() => ({
   fetchComments: vi.fn(),
 }))
 
+const pullRequests = vi.hoisted(() => ({
+  fetchPullRequestConversation: vi.fn(),
+}))
+
 vi.mock('../src/main/github/issues', () => ({
   fetchIssue: github.fetchIssue,
   fetchComments: github.fetchComments,
+}))
+
+vi.mock('../src/main/github/pullRequests', () => ({
+  fetchPullRequestConversation: pullRequests.fetchPullRequestConversation,
 }))
 
 const { buildContext, promptWithContext, visibleUserMessage } = await import('../src/main/goose/contextSync')
@@ -58,6 +66,67 @@ beforeEach(() => {
   github.comments = [comment(1, 'first')]
   github.fetchIssue.mockReset().mockImplementation(async () => github.issue)
   github.fetchComments.mockReset().mockImplementation(async () => github.comments)
+  pullRequests.fetchPullRequestConversation.mockReset()
+})
+
+describe('pull request context synchronization', () => {
+  it('sends general comments, review summaries, and inline review threads to Goose', async () => {
+    const conversation = {
+      pullRequest: {
+        node_id: 'pr-node',
+        number: 2,
+        title: 'Pull request',
+        state: 'open',
+        draft: false,
+        body: 'Description',
+        user: { login: 'author', avatar_url: '' },
+        base: { ref: 'main' },
+        head: { ref: 'feature', repo: { full_name: 'contributor/repo' } },
+        updated_at: '2026-01-01T00:00:03Z',
+      },
+      comments: [comment(1, 'General comment')],
+      reviews: [
+        {
+          id: 2,
+          nodeId: 'review-2',
+          author: 'reviewer',
+          body: 'Review summary',
+          state: 'CHANGES_REQUESTED',
+          submittedAt: '2026-01-01T00:00:02Z',
+        },
+      ],
+      reviewThreads: [
+        {
+          id: 'thread-3',
+          resolved: false,
+          comments: [
+            {
+              id: 3,
+              nodeId: 'review-comment-3',
+              author: 'reviewer',
+              body: 'Inline comment',
+              createdAt: '2026-01-01T00:00:03Z',
+              updatedAt: '2026-01-01T00:00:03Z',
+              path: 'src/file.ts',
+              line: 12,
+              diffHunk: '@@ -1 +1 @@',
+            },
+          ],
+        },
+      ],
+    }
+    pullRequests.fetchPullRequestConversation.mockResolvedValue(conversation)
+    const pullRequestSession = { ...session(), kind: 'pullRequest' as const, issueNumber: 2 }
+
+    const first = await buildContext(pullRequestSession, true)
+    const unchanged = await buildContext({ ...pullRequestSession, ...first.cursors }, false)
+
+    expect(first.contextBlock).toContain('General comment')
+    expect(first.contextBlock).toContain('Review summary')
+    expect(first.contextBlock).toContain('Inline comment')
+    expect(first.contextBlock).toContain('src/file.ts')
+    expect(unchanged.contextBlock).toBeNull()
+  })
 })
 
 describe('context synchronization', () => {

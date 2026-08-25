@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { GoosePane } from './components/GoosePane'
 import { IssuePane } from './components/IssuePane'
+import { PullRequestPane } from './components/PullRequestPane'
 import { SettingsView } from './components/SettingsView'
 import { Sidebar } from './components/Sidebar'
 import { useStore } from './store'
@@ -8,6 +9,7 @@ import { useStore } from './store'
 export function App(): React.JSX.Element {
   const init = useStore((s) => s.init)
   const view = useStore((s) => s.view)
+  const conversationKind = useStore((s) => s.conversationKind)
 
   useEffect(() => init(), [init])
 
@@ -19,7 +21,7 @@ export function App(): React.JSX.Element {
       ) : (
         <div className="flex min-h-0 flex-1">
           <Sidebar />
-          <IssuePane />
+          {conversationKind === 'issue' ? <IssuePane /> : <PullRequestPane />}
           <GoosePane />
         </div>
       )}
@@ -32,6 +34,8 @@ function TitleBar(): React.JSX.Element {
   const setView = useStore((s) => s.setView)
   const auth = useStore((s) => s.auth)
   const budget = useStore((s) => s.budget)
+  const conversationKind = useStore((s) => s.conversationKind)
+  const setConversationKind = useStore((s) => s.setConversationKind)
 
   return (
     <div className="titlebar-drag flex h-11 shrink-0 items-center border-b border-gray-200 bg-gray-50 pl-20 pr-3">
@@ -39,7 +43,25 @@ function TitleBar(): React.JSX.Element {
         <img src="./top-goose.png" alt="" className="h-7 w-7 object-contain" />
         Top Goose
       </span>
-      <div className="ml-auto flex items-center gap-3">
+      <div className="mx-auto flex rounded-lg bg-gray-200 p-0.5">
+        {([
+          ['issue', 'Issues'],
+          ['pullRequest', 'Pull requests'],
+        ] as const).map(([value, label]) => (
+          <button
+            key={value}
+            className={`rounded-md px-3 py-1 text-xs font-medium ${
+              conversationKind === value
+                ? 'bg-white text-gray-900 shadow-sm'
+                : 'text-gray-500 hover:text-gray-800'
+            }`}
+            onClick={() => setConversationKind(value)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      <div className="flex items-center gap-3">
         {budget && budget.degraded && (
           <span className="rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-800">
             API budget low ({budget.remaining} left) — serving cached rows

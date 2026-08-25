@@ -126,7 +126,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     'draft_reply',
     {
       description:
-        'Put a draft reply into the reply composer of the GitHub issue this conversation is about. ' +
+        'Put a draft reply into the reply composer of the GitHub conversation this session is about. ' +
         'The user reviews, edits, and explicitly sends it; nothing is posted to GitHub automatically.',
       inputSchema: { body: z.string().describe('The proposed reply, GitHub-flavored markdown.') },
     },

@@ -1,7 +1,7 @@
 {
   "name": "top-goose",
   "version": "0.1.0",
-  "description": "GitHub issues as conversations, with a private Goose side-channel per issue",
+  "description": "GitHub issues and pull requests with a private Goose side-channel",
   "main": "out/main/index.js",
   "type": "module",
   "private": true,

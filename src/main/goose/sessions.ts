@@ -311,7 +311,7 @@ async function ensureSession(issueNodeId: string, live: LiveSession): Promise<Is
   let cwd = config.path
   let worktreePath: string | undefined
   if (config.useWorktrees) {
-    worktreePath = await ensureWorktree(config.path, row.issueNumber)
+    worktreePath = await ensureWorktree(config.path, row.kind, row.issueNumber)
     cwd = worktreePath
   }
 
@@ -319,6 +319,7 @@ async function ensureSession(issueNodeId: string, live: LiveSession): Promise<Is
   await attachDraftServer(sessionId, issueNodeId, cwd)
   const mapping: IssueSession = {
     issueNodeId,
+    kind: row.kind,
     host: 'github.com',
     account: getAuthMeta().login ?? 'unknown',
     repo: row.repo,
@@ -338,7 +339,7 @@ async function sessionCwd(mapping: IssueSession): Promise<string> {
   const config = repoConfig(mapping.repo)
   if (!config?.path) throw new Error(`Configure a local clone for ${mapping.repo} before asking Goose`)
   if (config.useWorktrees) {
-    const worktreePath = await ensureWorktree(config.path, mapping.issueNumber)
+    const worktreePath = await ensureWorktree(config.path, mapping.kind ?? 'issue', mapping.issueNumber)
     saveIssueSession({ ...mapping, worktreePath })
     return worktreePath
   }

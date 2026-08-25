@@ -1,5 +1,5 @@
 import { coreTeam } from '../../shared/coreTeam'
-import type { IssueDetail } from '../../shared/types'
+import type { IssueDetail, PullRequestDetail } from '../../shared/types'
 
 export type MentionCandidate = {
   login: string
@@ -20,16 +20,24 @@ export function mentionAtCursor(text: string, cursor: number): MentionRange | nu
   return { start: cursor - query.length - 1, end: cursor, query }
 }
 
-export function mentionCandidates(issue: IssueDetail | null): MentionCandidate[] {
+export function mentionCandidates(conversation: IssueDetail | PullRequestDetail | null): MentionCandidate[] {
   const candidates: MentionCandidate[] = coreTeam.map((member) => ({
     login: member.github,
     name: member.name,
     core: true,
   }))
   const seen = new Set(candidates.map((candidate) => candidate.login.toLowerCase()))
-  if (!issue) return candidates
+  if (!conversation) return candidates
 
-  const participants = [issue.author, ...issue.assignees, ...issue.comments.map((comment) => comment.author)]
+  const participants = [
+    conversation.author,
+    ...conversation.assignees,
+    ...conversation.comments.map((comment) => comment.author),
+    ...('reviews' in conversation ? conversation.reviews.map((review) => review.author) : []),
+    ...('reviewThreads' in conversation
+      ? conversation.reviewThreads.flatMap((thread) => thread.comments.map((comment) => comment.author))
+      : []),
+  ]
   for (const login of participants) {
     const key = login.toLowerCase()
     if (seen.has(key)) continue

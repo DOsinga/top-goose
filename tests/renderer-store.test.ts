@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { IssueComment, IssueDetail } from '../src/shared/types'
+import type { IssueComment, IssueDetail, PullRequestDetail } from '../src/shared/types'
 
 const invoke = vi.fn()
 vi.stubGlobal('window', {
@@ -30,6 +30,31 @@ function issue(nodeId: string, issueNumber: number): IssueDetail {
   }
 }
 
+function pullRequest(nodeId: string, number: number): PullRequestDetail {
+  return {
+    repo: 'owner/repo',
+    pullRequestNumber: number,
+    nodeId,
+    title: `Pull request ${number}`,
+    state: 'open',
+    merged: false,
+    author: 'author',
+    assignees: [],
+    labels: [],
+    body: 'body',
+    createdAt: '2026-01-01T00:00:00Z',
+    updatedAt: '2026-01-01T00:00:00Z',
+    isDraft: false,
+    baseRefName: 'main',
+    headRefName: 'feature',
+    mergeable: 'MERGEABLE',
+    requestedReviewers: [],
+    comments: [],
+    reviews: [],
+    reviewThreads: [],
+  }
+}
+
 function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
   let resolve!: (value: T) => void
   const promise = new Promise<T>((done) => {
@@ -42,15 +67,70 @@ beforeEach(() => {
   invoke.mockReset()
   useStore.setState({
     rows: [],
+    conversationKind: 'issue',
+    pullRequestFilters: [],
+    pullRequestStateFilter: null,
     workflowStatusFilter: null,
     selectedNodeId: null,
     issue: null,
+    pullRequest: null,
     issueLoading: false,
     issueError: null,
     assigneeSaving: false,
+    pullRequestLoading: false,
+    pullRequestError: null,
+    approvalSaving: false,
     composers: {},
     gooseChats: {},
     view: 'main',
+  })
+})
+
+describe('pull request selection', () => {
+  it('loads the PR and its persistent Goose session independently', async () => {
+    invoke.mockImplementation((channel: string) => {
+      if (channel === 'pullRequest:open') return Promise.resolve(pullRequest('PR', 7))
+      if (channel === 'session:open') {
+        return Promise.resolve({
+          issueNodeId: 'PR',
+          sessionId: 'goose-session',
+          messages: [{ role: 'agent', id: 'old', text: 'Previous thinking', toolCalls: [] }],
+          busy: false,
+          noWorkspace: false,
+        })
+      }
+      if (channel === 'draft:take') return Promise.resolve(null)
+      return Promise.resolve()
+    })
+    useStore.setState({ conversationKind: 'pullRequest' })
+
+    await useStore.getState().selectPullRequest('PR')
+    await Promise.resolve()
+
+    expect(useStore.getState().pullRequest?.pullRequestNumber).toBe(7)
+    expect(useStore.getState().gooseChats.PR?.messages).toEqual([
+      expect.objectContaining({ text: 'Previous thinking' }),
+    ])
+  })
+
+  it('refreshes review state after approving', async () => {
+    invoke.mockImplementation((channel: string) => {
+      if (channel === 'pullRequest:approve') {
+        return Promise.resolve({ ...pullRequest('PR', 7), viewerReviewState: 'APPROVED' })
+      }
+      return Promise.resolve()
+    })
+    useStore.setState({
+      conversationKind: 'pullRequest',
+      selectedNodeId: 'PR',
+      pullRequest: pullRequest('PR', 7),
+    })
+
+    await useStore.getState().approvePullRequest()
+
+    expect(invoke).toHaveBeenCalledWith('pullRequest:approve', 'PR')
+    expect(useStore.getState().pullRequest?.viewerReviewState).toBe('APPROVED')
+    expect(useStore.getState().approvalSaving).toBe(false)
   })
 })
 

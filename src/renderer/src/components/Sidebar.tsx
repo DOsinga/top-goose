@@ -1,17 +1,22 @@
-import type { CachedRow } from '../../../shared/types'
-import { useStore, type SidebarFilter } from '../store'
+import type { CachedRow, ConversationKind } from '../../../shared/types'
+import {
+  useStore,
+  type PullRequestFilter,
+  type PullRequestStateFilter,
+  type SidebarFilter,
+} from '../store'
 
 const NO_BOARD_STATUS = '__no_board_status__'
 
 function unreadCount(row: CachedRow): number {
-  if (row.commentCountAtRead === undefined) return row.unread ? -1 : 0 // -1 = dot, count unknown
-  return Math.max(0, row.commentCount - row.commentCountAtRead)
+  if (row.commentCountAtRead === undefined) return row.unread ? -1 : 0
+  const count = Math.max(0, row.commentCount - row.commentCountAtRead)
+  return count || (row.unread ? -1 : 0)
 }
 
-/** the last voice on the issue is not mine — the ball is in my court */
 function isUnreplied(row: CachedRow, login?: string): boolean {
   const lastVoice = row.lastComment?.author ?? row.author
-  return lastVoice !== login
+  return lastVoice?.toLowerCase() !== login?.toLowerCase()
 }
 
 function timeAgo(iso: string): string {
@@ -22,70 +27,34 @@ function timeAgo(iso: string): string {
   return `${Math.floor(seconds / 86400)}d`
 }
 
-export function Sidebar(): React.JSX.Element {
-  const rows = useStore((s) => s.rows)
-  const selected = useStore((s) => s.selectedNodeId)
-  const selectIssue = useStore((s) => s.selectIssue)
-  const filters = useStore((s) => s.sidebarFilters)
-  const toggleFilter = useStore((s) => s.toggleSidebarFilter)
-  const statusFilter = useStore((s) => s.workflowStatusFilter)
-  const setStatusFilter = useStore((s) => s.setWorkflowStatusFilter)
-  const login = useStore((s) => s.auth?.login)
+function includesLogin(values: string[] | undefined, login?: string): boolean {
+  return !!login && !!values?.some((value) => value.toLowerCase() === login.toLowerCase())
+}
 
-  const passes: Record<SidebarFilter, (r: CachedRow) => boolean> = {
-    unread: (r) => unreadCount(r) !== 0,
-    unreplied: (r) => isUnreplied(r, login),
-    assigned: (r) => !!login && !!r.assignees?.includes(login),
-  }
-  const statuses = [...new Set(rows.flatMap((row) => (row.workflowStatus ? [row.workflowStatus] : [])))].sort()
-  const statusOptions =
-    statusFilter && statusFilter !== NO_BOARD_STATUS && !statuses.includes(statusFilter)
-      ? [statusFilter, ...statuses]
-      : statuses
-  const noStatusCount = rows.filter((row) => !row.workflowStatus).length
-  const visible = rows.filter(
-    (row) =>
-      filters.every((filter) => passes[filter](row)) &&
-      (statusFilter === null ||
-        (statusFilter === NO_BOARD_STATUS ? !row.workflowStatus : row.workflowStatus === statusFilter)),
-  )
+export function Sidebar(): React.JSX.Element {
+  const kind = useStore((state) => state.conversationKind)
+  const rows = useStore((state) => state.rows).filter((row) => row.kind === kind)
+  const selected = useStore((state) => state.selectedNodeId)
+  const selectIssue = useStore((state) => state.selectIssue)
+  const selectPullRequest = useStore((state) => state.selectPullRequest)
+  const login = useStore((state) => state.auth?.login)
+  const issueFilters = useStore((state) => state.sidebarFilters)
+  const workflowStatusFilter = useStore((state) => state.workflowStatusFilter)
+  const pullRequestFilters = useStore((state) => state.pullRequestFilters)
+  const pullRequestStateFilter = useStore((state) => state.pullRequestStateFilter)
+  const visible =
+    kind === 'issue'
+      ? filterIssues(rows, issueFilters, workflowStatusFilter, login)
+      : filterPullRequests(rows, pullRequestFilters, pullRequestStateFilter, login)
 
   return (
     <div className="flex w-72 shrink-0 flex-col border-r border-gray-200 bg-gray-50">
-      <div className="shrink-0 space-y-1.5 border-b border-gray-200 px-2 py-1.5">
-        <div className="flex gap-1">
-          {(['unread', 'unreplied', 'assigned'] as const).map((filter) => (
-            <FilterPill
-              key={filter}
-              label={filter}
-              count={rows.filter(passes[filter]).length}
-              active={filters.includes(filter)}
-              onClick={() => toggleFilter(filter)}
-            />
-          ))}
-        </div>
-        <select
-          aria-label="Filter by board status"
-          className="w-full cursor-pointer rounded border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700"
-          value={statusFilter ?? ''}
-          onChange={(event) => setStatusFilter(event.target.value || null)}
-        >
-          <option value="">All board statuses ({rows.length})</option>
-          {statusOptions.map((status) => (
-            <option key={status} value={status}>
-              {status} ({rows.filter((row) => row.workflowStatus === status).length})
-            </option>
-          ))}
-          {(noStatusCount > 0 || statusFilter === NO_BOARD_STATUS) && (
-            <option value={NO_BOARD_STATUS}>No board status ({noStatusCount})</option>
-          )}
-        </select>
-      </div>
+      {kind === 'issue' ? <IssueFilters rows={rows} /> : <PullRequestFilters rows={rows} />}
       <div className="flex-1 overflow-y-auto">
         {visible.length === 0 && (
           <div className="p-4 text-sm text-gray-500">
             {rows.length === 0
-              ? 'No open issues in this repository.'
+              ? `No open ${kind === 'issue' ? 'issues' : 'pull requests'} in this repository.`
               : 'Nothing matches the active filters.'}
           </div>
         )}
@@ -94,11 +63,164 @@ export function Sidebar(): React.JSX.Element {
             key={row.nodeId}
             row={row}
             selected={row.nodeId === selected}
-            onClick={() => void selectIssue(row.nodeId)}
+            onClick={() =>
+              kind === 'issue' ? void selectIssue(row.nodeId) : void selectPullRequest(row.nodeId)
+            }
+            kind={kind}
           />
         ))}
       </div>
     </div>
+  )
+}
+
+function IssueFilters({ rows }: { rows: CachedRow[] }): React.JSX.Element {
+  const filters = useStore((state) => state.sidebarFilters)
+  const toggleFilter = useStore((state) => state.toggleSidebarFilter)
+  const statusFilter = useStore((state) => state.workflowStatusFilter)
+  const setStatusFilter = useStore((state) => state.setWorkflowStatusFilter)
+  const login = useStore((state) => state.auth?.login)
+  const passes: Record<SidebarFilter, (row: CachedRow) => boolean> = {
+    unread: (row) => unreadCount(row) !== 0,
+    unreplied: (row) => isUnreplied(row, login),
+    assigned: (row) => includesLogin(row.assignees, login),
+  }
+  const statuses = [...new Set(rows.flatMap((row) => (row.workflowStatus ? [row.workflowStatus] : [])))].sort()
+  const statusOptions =
+    statusFilter && statusFilter !== NO_BOARD_STATUS && !statuses.includes(statusFilter)
+      ? [statusFilter, ...statuses]
+      : statuses
+  const noStatusCount = rows.filter((row) => !row.workflowStatus).length
+  return (
+    <FilterArea>
+      <div className="flex gap-1">
+        {(['unread', 'unreplied', 'assigned'] as const).map((filter) => (
+          <FilterPill
+            key={filter}
+            label={filter}
+            count={rows.filter(passes[filter]).length}
+            active={filters.includes(filter)}
+            onClick={() => toggleFilter(filter)}
+          />
+        ))}
+      </div>
+      <select
+        aria-label="Filter by board status"
+        className="w-full cursor-pointer rounded border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700"
+        value={statusFilter ?? ''}
+        onChange={(event) => setStatusFilter(event.target.value || null)}
+      >
+        <option value="">All board statuses ({rows.length})</option>
+        {statusOptions.map((status) => (
+          <option key={status} value={status}>
+            {status} ({rows.filter((row) => row.workflowStatus === status).length})
+          </option>
+        ))}
+        {(noStatusCount > 0 || statusFilter === NO_BOARD_STATUS) && (
+          <option value={NO_BOARD_STATUS}>No board status ({noStatusCount})</option>
+        )}
+      </select>
+    </FilterArea>
+  )
+}
+
+function PullRequestFilters({ rows }: { rows: CachedRow[] }): React.JSX.Element {
+  const filters = useStore((state) => state.pullRequestFilters)
+  const toggleFilter = useStore((state) => state.togglePullRequestFilter)
+  const stateFilter = useStore((state) => state.pullRequestStateFilter)
+  const setStateFilter = useStore((state) => state.setPullRequestStateFilter)
+  const login = useStore((state) => state.auth?.login)
+  const passes: Record<PullRequestFilter, (row: CachedRow) => boolean> = {
+    reviewRequested: (row) => includesLogin(row.reviewRequestedFrom, login),
+    assigned: (row) => includesLogin(row.assignees, login),
+    authored: (row) => row.author?.toLowerCase() === login?.toLowerCase(),
+  }
+  const passesState: Record<PullRequestStateFilter, (row: CachedRow) => boolean> = {
+    ready: (row) => !row.isDraft,
+    draft: (row) => !!row.isDraft,
+    approved: (row) => row.reviewDecision === 'APPROVED',
+    changesRequested: (row) => row.reviewDecision === 'CHANGES_REQUESTED',
+    reviewRequired: (row) => row.reviewDecision === 'REVIEW_REQUIRED',
+  }
+  return (
+    <FilterArea>
+      <div className="flex flex-wrap gap-1">
+        {(['reviewRequested', 'assigned', 'authored'] as const).map((filter) => (
+          <FilterPill
+            key={filter}
+            label={filter === 'reviewRequested' ? 'review requested' : filter}
+            count={rows.filter(passes[filter]).length}
+            active={filters.includes(filter)}
+            onClick={() => toggleFilter(filter)}
+          />
+        ))}
+      </div>
+      <select
+        aria-label="Filter pull requests"
+        className="w-full cursor-pointer rounded border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700"
+        value={stateFilter ?? ''}
+        onChange={(event) => setStateFilter((event.target.value || null) as PullRequestStateFilter | null)}
+      >
+        <option value="">All pull requests ({rows.length})</option>
+        <option value="ready">Ready for review ({rows.filter(passesState.ready).length})</option>
+        <option value="draft">Draft ({rows.filter(passesState.draft).length})</option>
+        <option value="approved">Approved ({rows.filter(passesState.approved).length})</option>
+        <option value="changesRequested">
+          Changes requested ({rows.filter(passesState.changesRequested).length})
+        </option>
+        <option value="reviewRequired">Review required ({rows.filter(passesState.reviewRequired).length})</option>
+      </select>
+    </FilterArea>
+  )
+}
+
+function FilterArea({
+  children,
+}: {
+  children: React.ReactNode
+}): React.JSX.Element {
+  return <div className="shrink-0 space-y-1.5 border-b border-gray-200 px-2 py-1.5">{children}</div>
+}
+
+function filterIssues(
+  rows: CachedRow[],
+  filters: SidebarFilter[],
+  statusFilter: string | null,
+  login?: string,
+): CachedRow[] {
+  const passes: Record<SidebarFilter, (row: CachedRow) => boolean> = {
+    unread: (row) => unreadCount(row) !== 0,
+    unreplied: (row) => isUnreplied(row, login),
+    assigned: (row) => includesLogin(row.assignees, login),
+  }
+  return rows.filter(
+    (row) =>
+      filters.every((filter) => passes[filter](row)) &&
+      (statusFilter === null ||
+        (statusFilter === NO_BOARD_STATUS ? !row.workflowStatus : row.workflowStatus === statusFilter)),
+  )
+}
+
+function filterPullRequests(
+  rows: CachedRow[],
+  filters: PullRequestFilter[],
+  stateFilter: PullRequestStateFilter | null,
+  login?: string,
+): CachedRow[] {
+  const passes: Record<PullRequestFilter, (row: CachedRow) => boolean> = {
+    reviewRequested: (row) => includesLogin(row.reviewRequestedFrom, login),
+    assigned: (row) => includesLogin(row.assignees, login),
+    authored: (row) => row.author?.toLowerCase() === login?.toLowerCase(),
+  }
+  const passesState: Record<PullRequestStateFilter, (row: CachedRow) => boolean> = {
+    ready: (row) => !row.isDraft,
+    draft: (row) => !!row.isDraft,
+    approved: (row) => row.reviewDecision === 'APPROVED',
+    changesRequested: (row) => row.reviewDecision === 'CHANGES_REQUESTED',
+    reviewRequired: (row) => row.reviewDecision === 'REVIEW_REQUIRED',
+  }
+  return rows.filter(
+    (row) => filters.every((filter) => passes[filter](row)) && (!stateFilter || passesState[stateFilter](row)),
   )
 }
 
@@ -109,7 +231,7 @@ function FilterPill({
   onClick,
 }: {
   label: string
-  count?: number
+  count: number
   active: boolean
   onClick: () => void
 }): React.JSX.Element {
@@ -121,7 +243,7 @@ function FilterPill({
       }`}
     >
       {label}
-      {count !== undefined && count > 0 && (
+      {count > 0 && (
         <span className={`ml-1 text-[11px] ${active ? 'text-white/80' : 'text-gray-400'}`}>{count}</span>
       )}
     </button>
@@ -132,10 +254,12 @@ function SidebarRow({
   row,
   selected,
   onClick,
+  kind,
 }: {
   row: CachedRow
   selected: boolean
   onClick: () => void
+  kind: ConversationKind
 }): React.JSX.Element {
   const unread = unreadCount(row)
   const snoozed = !!row.snoozedUntil && row.snoozedUntil > new Date().toISOString().slice(0, 10)
@@ -147,9 +271,7 @@ function SidebarRow({
       } ${snoozed ? 'opacity-50' : ''}`}
     >
       <div className="flex items-baseline gap-2">
-        <span
-          className={`min-w-0 flex-1 truncate text-[13px] ${unread !== 0 ? 'font-semibold' : 'font-normal'}`}
-        >
+        <span className={`min-w-0 flex-1 truncate text-[13px] ${unread !== 0 ? 'font-semibold' : 'font-normal'}`}>
           {row.title}
         </span>
         {row.hasPendingDraft && <span title="Goose drafted a reply">✏️</span>}
@@ -160,20 +282,50 @@ function SidebarRow({
         <span className="text-[11px] text-gray-400">{timeAgo(row.updatedAt)}</span>
       </div>
       <div className="mt-0.5 flex items-center gap-1.5 text-[12px] text-gray-500">
-        {row.workflowStatus && (
-          <span className="shrink-0 rounded bg-gray-200 px-1 py-px text-[10px] font-medium text-gray-700">
-            {row.workflowStatus}
-          </span>
-        )}
-        {snoozed && (
-          <span className="shrink-0 rounded bg-indigo-100 px-1 py-px text-[10px] text-indigo-700">
-            zzz {row.snoozedUntil}
-          </span>
-        )}
+        {kind === 'issue' ? <IssueRowMeta row={row} snoozed={snoozed} /> : <PullRequestRowMeta row={row} />}
         <span className="truncate">
-          {row.lastComment ? `${row.lastComment.author}: ${row.lastComment.snippet}` : row.repo}
+          {row.lastComment ? `${row.lastComment.author}: ${row.lastComment.snippet}` : `${row.repo}#${row.issueNumber}`}
         </span>
       </div>
     </button>
   )
+}
+
+function IssueRowMeta({ row, snoozed }: { row: CachedRow; snoozed: boolean }): React.JSX.Element {
+  return (
+    <>
+      {row.workflowStatus && (
+        <span className="shrink-0 rounded bg-gray-200 px-1 py-px text-[10px] font-medium text-gray-700">
+          {row.workflowStatus}
+        </span>
+      )}
+      {snoozed && (
+        <span className="shrink-0 rounded bg-indigo-100 px-1 py-px text-[10px] text-indigo-700">
+          zzz {row.snoozedUntil}
+        </span>
+      )}
+    </>
+  )
+}
+
+function PullRequestRowMeta({ row }: { row: CachedRow }): React.JSX.Element {
+  const label = row.isDraft
+    ? 'draft'
+    : row.reviewDecision === 'APPROVED'
+      ? 'approved'
+      : row.reviewDecision === 'CHANGES_REQUESTED'
+        ? 'changes requested'
+        : row.reviewDecision === 'REVIEW_REQUIRED'
+          ? 'review required'
+          : 'ready'
+  const color = row.isDraft
+    ? 'bg-gray-200 text-gray-700'
+    : row.reviewDecision === 'APPROVED'
+      ? 'bg-green-100 text-green-700'
+      : row.reviewDecision === 'CHANGES_REQUESTED'
+        ? 'bg-red-100 text-red-700'
+        : row.reviewDecision === 'REVIEW_REQUIRED'
+          ? 'bg-amber-100 text-amber-700'
+          : 'bg-blue-100 text-blue-700'
+  return <span className={`shrink-0 rounded px-1 py-px text-[10px] font-medium ${color}`}>{label}</span>
 }

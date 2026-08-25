@@ -1,27 +1,20 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import { coreTeam } from '../../../shared/coreTeam'
 import type { IssueDetail } from '../../../shared/types'
-import {
-  insertMention,
-  matchingMentions,
-  mentionAtCursor,
-  mentionCandidates,
-  type MentionCandidate,
-  type MentionRange,
-} from '../mentions'
 import { useStore } from '../store'
 import { Markdown } from './Markdown'
+import { ReplyComposer } from './ReplyComposer'
 
 export function IssuePane(): React.JSX.Element {
-  const issue = useStore((s) => s.issue)
-  const loading = useStore((s) => s.issueLoading)
-  const error = useStore((s) => s.issueError)
-  const selected = useStore((s) => s.selectedNodeId)
+  const issue = useStore((state) => state.issue)
+  const loading = useStore((state) => state.issueLoading)
+  const error = useStore((state) => state.issueError)
+  const selected = useStore((state) => state.selectedNodeId)
 
   if (!selected) {
     return (
       <div className="flex min-w-0 flex-1 items-center justify-center text-gray-400">
-        Select a conversation
+        Select an issue
       </div>
     )
   }
@@ -33,17 +26,17 @@ export function IssuePane(): React.JSX.Element {
         {error && <div className="p-6 text-sm text-red-600">{error}</div>}
         {issue && <Transcript issue={issue} />}
       </div>
-      <Composer />
+      <ReplyComposer conversation={issue} kind="issue" />
     </div>
   )
 }
 
 function IssueHeader({ issue }: { issue: IssueDetail }): React.JSX.Element {
-  const setStatus = useStore((s) => s.setStatus)
-  const setSnooze = useStore((s) => s.setSnooze)
-  const setAssignee = useStore((s) => s.setAssignee)
-  const assigneeSaving = useStore((s) => s.assigneeSaving)
-  const setView = useStore((s) => s.setView)
+  const setStatus = useStore((state) => state.setStatus)
+  const setSnooze = useStore((state) => state.setSnooze)
+  const setAssignee = useStore((state) => state.setAssignee)
+  const assigneeSaving = useStore((state) => state.assigneeSaving)
+  const setView = useStore((state) => state.setView)
   const url = `https://github.com/${issue.repo}/issues/${issue.issueNumber}`
 
   return (
@@ -61,19 +54,18 @@ function IssueHeader({ issue }: { issue: IssueDetail }): React.JSX.Element {
         >
           {issue.state}
         </span>
-        {/* the board Status is the primary triage control: keep it on the title row */}
         {issue.availableStatuses.length > 0 ? (
           <select
             className="shrink-0 cursor-pointer appearance-none rounded-full border border-gray-300 bg-white px-2.5 py-0.5 text-[11px] font-medium text-gray-700 hover:border-accent"
             value={issue.workflowStatus ?? ''}
-            onChange={(e) => void setStatus(e.target.value)}
+            onChange={(event) => void setStatus(event.target.value)}
           >
             <option value="" disabled>
               Status…
             </option>
-            {issue.availableStatuses.map((s) => (
-              <option key={s} value={s}>
-                {s}
+            {issue.availableStatuses.map((status) => (
+              <option key={status} value={status}>
+                {status}
               </option>
             ))}
           </select>
@@ -101,7 +93,7 @@ function IssueHeader({ issue }: { issue: IssueDetail }): React.JSX.Element {
             className="cursor-pointer rounded border border-gray-300 bg-white px-1 py-px text-[11px] disabled:opacity-50"
             value={assigneeValue(issue.assignees)}
             disabled={assigneeSaving}
-            onChange={(e) => void setAssignee(e.target.value || null)}
+            onChange={(event) => void setAssignee(event.target.value || null)}
           >
             {assigneeValue(issue.assignees) === '__current__' && (
               <option value="__current__" disabled>
@@ -116,17 +108,16 @@ function IssueHeader({ issue }: { issue: IssueDetail }): React.JSX.Element {
             ))}
           </select>
         </span>
-        {issue.labels.map((l) => (
+        {issue.labels.map((label) => (
           <span
-            key={l.name}
+            key={label.name}
             className="rounded-full border px-1.5 py-px text-[10px]"
-            style={{ borderColor: `#${l.color}`, color: `#${l.color}` }}
+            style={{ borderColor: `#${label.color}`, color: `#${label.color}` }}
           >
-            {l.name}
+            {label.name}
           </span>
         ))}
         {issue.milestone && <span>🏁 {issue.milestone}</span>}
-
         {issue.availableStatuses.length > 0 && (
           <span className="flex items-center gap-1">
             <label className="text-gray-400">snooze</label>
@@ -134,7 +125,7 @@ function IssueHeader({ issue }: { issue: IssueDetail }): React.JSX.Element {
               type="date"
               className="rounded border border-gray-300 bg-white px-1 py-px text-[11px]"
               value={issue.snoozedUntil ?? ''}
-              onChange={(e) => void setSnooze(e.target.value || null)}
+              onChange={(event) => void setSnooze(event.target.value || null)}
             />
           </span>
         )}
@@ -159,9 +150,21 @@ function Transcript({ issue }: { issue: IssueDetail }): React.JSX.Element {
 
   return (
     <div className="space-y-3 px-5 py-4">
-      <Bubble author={issue.author} avatar={issue.authorAvatarUrl} at={issue.createdAt} body={issue.body || '*no description*'} isOp />
-      {issue.comments.map((c) => (
-        <Bubble key={c.id} author={c.author} avatar={c.authorAvatarUrl} at={c.createdAt} body={c.body} />
+      <Bubble
+        author={issue.author}
+        avatar={issue.authorAvatarUrl}
+        at={issue.createdAt}
+        body={issue.body || '*no description*'}
+        highlighted
+      />
+      {issue.comments.map((comment) => (
+        <Bubble
+          key={comment.id}
+          author={comment.author}
+          avatar={comment.authorAvatarUrl}
+          at={comment.createdAt}
+          body={comment.body}
+        />
       ))}
       <div ref={endRef} />
     </div>
@@ -173,170 +176,22 @@ function Bubble({
   avatar,
   at,
   body,
-  isOp,
+  highlighted,
 }: {
   author: string
   avatar?: string
   at: string
   body: string
-  isOp?: boolean
+  highlighted?: boolean
 }): React.JSX.Element {
   return (
-    <div className={`rounded-lg border p-3 ${isOp ? 'border-accent/30 bg-accent/5' : 'border-gray-200'}`}>
+    <div className={`rounded-lg border p-3 ${highlighted ? 'border-accent/30 bg-accent/5' : 'border-gray-200'}`}>
       <div className="mb-1 flex items-center gap-2">
         {avatar && <img src={avatar} className="h-5 w-5 rounded-full" alt="" />}
         <span className="text-[13px] font-semibold">{author}</span>
         <span className="text-[11px] text-gray-400">{new Date(at).toLocaleString()}</span>
       </div>
       <Markdown>{body}</Markdown>
-    </div>
-  )
-}
-
-function Composer(): React.JSX.Element {
-  const selected = useStore((s) => s.selectedNodeId)
-  const issue = useStore((s) => s.issue)
-  const composer = useStore((s) => (selected ? s.composers[selected] : undefined))
-  const setComposerText = useStore((s) => s.setComposerText)
-  const acceptOfferedDraft = useStore((s) => s.acceptOfferedDraft)
-  const discardOfferedDraft = useStore((s) => s.discardOfferedDraft)
-  const reply = useStore((s) => s.reply)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const [mention, setMention] = useState<MentionRange | null>(null)
-  const [mentionIndex, setMentionIndex] = useState(0)
-  const candidates = useMemo(() => mentionCandidates(issue), [issue])
-  const matches = mention ? matchingMentions(candidates, mention.query) : []
-
-  useEffect(() => {
-    setMention(null)
-    setMentionIndex(0)
-  }, [selected])
-
-  useEffect(() => {
-    setMentionIndex(0)
-  }, [mention?.query])
-
-  if (!selected) return <></>
-  const text = composer?.text ?? ''
-  const ready = issue?.nodeId === selected
-
-  const insertDraft = (): void => {
-    const draft = acceptOfferedDraft(selected)
-    if (!draft || !textareaRef.current) return
-    // insert through the composer's own edit history so it is undoable
-    const el = textareaRef.current
-    el.focus()
-    el.setSelectionRange(el.value.length, el.value.length)
-    document.execCommand('insertText', false, (el.value && !el.value.endsWith('\n') ? '\n' : '') + draft)
-  }
-
-  const updateMention = (el: HTMLTextAreaElement): void => {
-    setMention(mentionAtCursor(el.value, el.selectionStart))
-  }
-
-  const chooseMention = (candidate: MentionCandidate): void => {
-    if (!mention || !selected) return
-    const inserted = insertMention(text, mention, candidate.login)
-    setComposerText(selected, inserted.text, true)
-    setMention(null)
-    requestAnimationFrame(() => {
-      textareaRef.current?.focus()
-      textareaRef.current?.setSelectionRange(inserted.cursor, inserted.cursor)
-    })
-  }
-
-  return (
-    <div className="shrink-0 border-t border-gray-200 p-3">
-      {composer?.offeredDraft && (
-        <div className="mb-2 flex items-center gap-2 rounded border border-goose/40 bg-goose/5 px-3 py-2 text-[12px]">
-          <span className="min-w-0 flex-1 truncate text-gray-700">
-            🪿 Goose drafted a reply — <span className="italic">{composer.offeredDraft.slice(0, 80)}…</span>
-          </span>
-          <button className="rounded bg-goose px-2 py-0.5 text-white" onClick={insertDraft}>
-            Insert
-          </button>
-          <button className="rounded px-2 py-0.5 hover:bg-gray-100" onClick={() => discardOfferedDraft(selected)}>
-            Discard
-          </button>
-        </div>
-      )}
-      {composer?.error && <div className="mb-2 text-xs text-red-600">Could not post reply: {composer.error}</div>}
-      <div className="relative">
-        {mention && matches.length > 0 && (
-          <div className="absolute bottom-full left-0 z-10 mb-1 max-h-64 w-72 overflow-y-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
-            {matches.map((candidate, index) => (
-              <button
-                key={candidate.login}
-                type="button"
-                className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm ${
-                  index === mentionIndex ? 'bg-accent/10 text-accent' : 'hover:bg-gray-50'
-                }`}
-                onMouseDown={(e) => {
-                  e.preventDefault()
-                  chooseMention(candidate)
-                }}
-              >
-                <span className="min-w-0 flex-1 truncate">
-                  {candidate.name ? `${candidate.name} ` : ''}
-                  <span className="text-gray-500">@{candidate.login}</span>
-                </span>
-                <span className="text-[10px] text-gray-400">
-                  {candidate.core ? 'core team' : 'in conversation'}
-                </span>
-              </button>
-            ))}
-          </div>
-        )}
-        <textarea
-          ref={textareaRef}
-          className="h-24 w-full resize-none rounded-lg border border-gray-300 p-3 text-sm focus:border-accent focus:outline-none"
-          placeholder="Reply on GitHub… (⌘↵ to send)"
-          value={text}
-          disabled={!ready || composer?.sending}
-          onBlur={() => setMention(null)}
-          onClick={(e) => updateMention(e.currentTarget)}
-          onChange={(e) => {
-            updateMention(e.currentTarget)
-            setComposerText(selected, e.target.value, true)
-          }}
-          onKeyDown={(e) => {
-            if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-              e.preventDefault()
-              setMention(null)
-              void reply()
-              return
-            }
-            if (!mention || matches.length === 0) return
-            if (e.key === 'ArrowDown') {
-              e.preventDefault()
-              setMentionIndex((mentionIndex + 1) % matches.length)
-            } else if (e.key === 'ArrowUp') {
-              e.preventDefault()
-              setMentionIndex((mentionIndex - 1 + matches.length) % matches.length)
-            } else if (e.key === 'Enter' || e.key === 'Tab') {
-              e.preventDefault()
-              chooseMention(matches[mentionIndex] ?? matches[0])
-            } else if (e.key === 'Escape') {
-              e.preventDefault()
-              setMention(null)
-            }
-          }}
-          onKeyUp={(e) => {
-            if (!['ArrowDown', 'ArrowUp', 'Enter', 'Tab', 'Escape'].includes(e.key)) {
-              updateMention(e.currentTarget)
-            }
-          }}
-        />
-      </div>
-      <div className="mt-1 flex justify-end">
-        <button
-          className="rounded-lg bg-accent px-4 py-1.5 text-sm font-medium text-white disabled:opacity-40"
-          disabled={!ready || !text.trim() || composer?.sending}
-          onClick={() => void reply()}
-        >
-          {composer?.sending ? 'Sending…' : 'Send to GitHub'}
-        </button>
-      </div>
     </div>
   )
 }

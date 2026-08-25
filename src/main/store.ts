@@ -67,6 +67,7 @@ export function setAuthLogin(login: string): void {
 
 export type IssueSession = {
   issueNodeId: string // primary key
+  kind?: 'issue' | 'pullRequest'
   host: string
   account: string
   repo: string
@@ -122,11 +123,12 @@ function sidebarCache(): JsonFile<SidebarCache> {
 }
 
 export function getCachedRows(): CachedRow[] {
-  return Object.values(sidebarCache().get().rows)
+  return Object.values(sidebarCache().get().rows).map((row) => ({ ...row, kind: row.kind ?? 'issue' }))
 }
 
 export function getCachedRow(nodeId: string): CachedRow | undefined {
-  return sidebarCache().get().rows[nodeId]
+  const row = sidebarCache().get().rows[nodeId]
+  return row ? { ...row, kind: row.kind ?? 'issue' } : undefined
 }
 
 export function putCachedRows(rows: CachedRow[]): void {

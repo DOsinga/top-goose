@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import type { IssueComment } from '../../shared/types'
 import { fetchComments, fetchIssue } from '../github/issues'
+import { fetchPullRequestConversation } from '../github/pullRequests'
 import type { IssueSession } from '../store'
 
 export const CONTEXT_OPEN = '<github-context>'
@@ -87,6 +88,7 @@ export function visibleUserMessage(prompt: string): string {
 }
 
 export async function buildContext(session: IssueSession, isFirstTurn: boolean): Promise<SyncResult> {
+  if (session.kind === 'pullRequest') return buildPullRequestContext(session, isFirstTurn)
   const issue = await fetchIssue(session.repo, session.issueNumber)
   if (
     !isFirstTurn &&
@@ -144,5 +146,64 @@ export async function buildContext(session: IssueSession, isFirstTurn: boolean):
       comments: newComments.map(commentData),
     }),
     cursors: makeCursors(),
+  }
+}
+
+async function buildPullRequestContext(session: IssueSession, isFirstTurn: boolean): Promise<SyncResult> {
+  const { pullRequest, comments, reviews, reviewThreads } = await fetchPullRequestConversation(
+    session.repo,
+    session.issueNumber,
+  )
+  const value = {
+    pullRequest: {
+      title: pullRequest.title,
+      state: pullRequest.state,
+      draft: pullRequest.draft,
+      author: pullRequest.user.login,
+      baseRefName: pullRequest.base.ref,
+      headRefName: pullRequest.head.ref,
+      headRepository: pullRequest.head.repo?.full_name,
+      body: pullRequest.body ?? '',
+    },
+    comments: comments.map(commentData),
+    reviews: reviews.map((review) => ({
+      id: review.id,
+      author: review.author,
+      state: review.state,
+      submittedAt: review.submittedAt,
+      body: review.body,
+    })),
+    reviewThreads: reviewThreads.map((thread) => ({
+      resolved: thread.resolved,
+      comments: thread.comments.map((comment) => ({
+        id: comment.id,
+        author: comment.author,
+        path: comment.path,
+        line: comment.line ?? comment.originalLine,
+        createdAt: comment.createdAt,
+        updatedAt: comment.updatedAt,
+        body: comment.body,
+      })),
+    })),
+  }
+  const hash = createHash('sha256').update(JSON.stringify(value)).digest('hex')
+  const cursors: SyncResult['cursors'] = {
+    lastSyncedCommentId: comments.at(-1)?.id,
+    lastSyncedIssueUpdatedAt: pullRequest.updated_at,
+    lastSyncedCommentCount: comments.length,
+    lastSyncedBodyUpdatedAt: pullRequest.updated_at,
+    lastSyncedHistoryHash: hash,
+  }
+  if (!isFirstTurn && session.lastSyncedHistoryHash === hash) {
+    return { contextBlock: null, cursors }
+  }
+  return {
+    contextBlock: contextBlock({
+      kind: 'snapshot',
+      repository: session.repo,
+      pullRequestNumber: session.issueNumber,
+      ...value,
+    }),
+    cursors,
   }
 }

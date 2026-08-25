@@ -40,8 +40,7 @@ let notifEtag: string | undefined
 
 /** notification thread IDs by issue node ID, for mark-as-read */
 const threadByNode = new Map<string, string>()
-/** issues discovered by notifications before we know their node ID */
-type IssueRef = { repo: string; number: number }
+type ConversationRef = { kind: 'issue' | 'pullRequest'; repo: string; number: number }
 
 export function onRows(listener: RowsListener): void {
   rowsListener = listener
@@ -115,17 +114,17 @@ async function pollNotificationsOnce(): Promise<number | undefined> {
   const res = await restGet<RestNotification[]>('/notifications?per_page=50', notifEtag)
   if (res.status === 304) return res.pollInterval
   notifEtag = res.etag
-  const changed: IssueRef[] = []
+  const changed: ConversationRef[] = []
   const configured = settingsRepo()
   if (!configured) return res.pollInterval
   for (const n of res.data ?? []) {
-    // pull requests are not channels; filter their notifications out
-    if (n.subject.type !== 'Issue' || !n.subject.url) continue
+    if (!n.subject.url || (n.subject.type !== 'Issue' && n.subject.type !== 'PullRequest')) continue
     // the app is scoped to the one configured repository
     if (n.repository.full_name.toLowerCase() !== configured) continue
-    const match = n.subject.url.match(/\/issues\/(\d+)$/)
+    const kind = n.subject.type === 'PullRequest' ? 'pullRequest' : 'issue'
+    const match = n.subject.url.match(kind === 'pullRequest' ? /\/pulls\/(\d+)$/ : /\/issues\/(\d+)$/)
     if (!match) continue
-    const ref: IssueRef = { repo: n.repository.full_name, number: parseInt(match[1], 10) }
+    const ref: ConversationRef = { kind, repo: n.repository.full_name, number: parseInt(match[1], 10) }
     const cached = findCachedByRef(ref)
     if (cached) {
       threadByNode.set(cached.nodeId, n.id)
@@ -146,12 +145,14 @@ async function pollNotificationsOnce(): Promise<number | undefined> {
 
 const pendingThreadIds = new Map<string, string>()
 
-function refKey(ref: IssueRef): string {
-  return `${ref.repo.toLowerCase()}#${ref.number}`
+function refKey(ref: ConversationRef): string {
+  return `${ref.kind}:${ref.repo.toLowerCase()}#${ref.number}`
 }
 
-function findCachedByRef(ref: IssueRef): CachedRow | undefined {
-  return getCachedRows().find((r) => r.repo.toLowerCase() === ref.repo.toLowerCase() && r.issueNumber === ref.number)
+function findCachedByRef(ref: ConversationRef): CachedRow | undefined {
+  return getCachedRows().find(
+    (row) => row.kind === ref.kind && row.repo.toLowerCase() === ref.repo.toLowerCase() && row.issueNumber === ref.number,
+  )
 }
 
 // ---------- Row fragment shared by search and hydration ----------
@@ -227,6 +228,51 @@ type GqlIssueRow = {
   } | null
 }
 
+type GqlPullRequestRow = {
+  id: string
+  number: number
+  title: string
+  author: { login: string } | null
+  assignees: { nodes: { login: string }[] }
+  state: string
+  updatedAt: string
+  isDraft: boolean
+  reviewDecision: CachedRow['reviewDecision'] | null
+  reviewRequests: {
+    nodes: { requestedReviewer: { login?: string; slug?: string; name?: string } | null }[]
+  }
+  repository: { nameWithOwner: string }
+  comments: { totalCount: number; nodes: { author: { login: string } | null; body: string }[] }
+}
+
+function pullRequestRowFragment(): string {
+  return `
+fragment PullRequestRowFields on PullRequest {
+  id
+  number
+  title
+  author { login }
+  assignees(first: 10) { nodes { login } }
+  state
+  updatedAt
+  isDraft
+  reviewDecision
+  reviewRequests(first: 100) {
+    nodes {
+      requestedReviewer {
+        ... on User { login }
+        ... on Team { name slug }
+      }
+    }
+  }
+  repository { nameWithOwner }
+  comments(last: 1) {
+    totalCount
+    nodes { author { login } body }
+  }
+}`
+}
+
 function toRow(issue: GqlIssueRow): CachedRow {
   const repo = issue.repository.nameWithOwner
   const config = repoConfig(repo)
@@ -243,6 +289,7 @@ function toRow(issue: GqlIssueRow): CachedRow {
   const last = issue.comments.nodes[0]
   const existing = getCachedRow(issue.id)
   return {
+    kind: 'issue',
     repo,
     issueNumber: issue.number,
     nodeId: issue.id,
@@ -263,16 +310,49 @@ function toRow(issue: GqlIssueRow): CachedRow {
   }
 }
 
+function toPullRequestRow(pullRequest: GqlPullRequestRow): CachedRow {
+  const last = pullRequest.comments.nodes[0]
+  const existing = getCachedRow(pullRequest.id)
+  return {
+    kind: 'pullRequest',
+    repo: pullRequest.repository.nameWithOwner,
+    issueNumber: pullRequest.number,
+    nodeId: pullRequest.id,
+    title: pullRequest.title,
+    author: pullRequest.author?.login ?? 'ghost',
+    assignees: pullRequest.assignees.nodes.map((assignee) => assignee.login),
+    state: pullRequest.state.toLowerCase(),
+    isDraft: pullRequest.isDraft,
+    reviewDecision: pullRequest.reviewDecision ?? undefined,
+    reviewRequestedFrom: pullRequest.reviewRequests.nodes.flatMap(({ requestedReviewer }) => {
+      if (!requestedReviewer) return []
+      return [requestedReviewer.login ?? requestedReviewer.slug ?? requestedReviewer.name ?? 'unknown']
+    }),
+    lastComment: last
+      ? { author: last.author?.login ?? 'ghost', snippet: last.body.replace(/\s+/g, ' ').slice(0, 120) }
+      : undefined,
+    commentCount: pullRequest.comments.totalCount,
+    commentCountAtRead: existing?.commentCountAtRead,
+    updatedAt: pullRequest.updatedAt,
+    hydratedAt: new Date().toISOString(),
+    unread: existing?.unread,
+  }
+}
+
 // ---------- Hydration: batched GraphQL over deltas only ----------
 
-async function hydrate(refs: IssueRef[]): Promise<void> {
+async function hydrate(refs: ConversationRef[]): Promise<void> {
   if (refs.length === 0) return
   if (budgetDegraded()) {
     console.warn('[hydrate] budget degraded; serving cached rows only')
     return
   }
-  // Batched by aliased repository(...) { issue(...) } selections; notification
-  // subjects do not carry node IDs, so this addresses by repo+number.
+  await hydrateIssues(refs.filter((ref) => ref.kind === 'issue'))
+  await hydratePullRequests(refs.filter((ref) => ref.kind === 'pullRequest'))
+}
+
+async function hydrateIssues(refs: ConversationRef[]): Promise<void> {
+  if (refs.length === 0) return
   const batch = refs.slice(0, 50)
   const vars: Record<string, unknown> = {}
   const selections = batch
@@ -311,24 +391,72 @@ async function hydrate(refs: IssueRef[]): Promise<void> {
   putCachedRows(rows)
 }
 
+async function hydratePullRequests(refs: ConversationRef[]): Promise<void> {
+  if (refs.length === 0) return
+  const batch = refs.slice(0, 50)
+  const vars: Record<string, unknown> = {}
+  const selections = batch
+    .map((ref, i) => {
+      const [owner, name] = ref.repo.split('/')
+      vars[`o${i}`] = owner
+      vars[`n${i}`] = name
+      vars[`i${i}`] = ref.number
+      return `x${i}: repository(owner: $o${i}, name: $n${i}) { pullRequest(number: $i${i}) { ...PullRequestRowFields } }`
+    })
+    .join('\n')
+  const varDefs = batch.map((_, i) => `$o${i}: String!, $n${i}: String!, $i${i}: Int!`).join(', ')
+  const data = await graphql<Record<string, { pullRequest: GqlPullRequestRow | null } | null>>(
+    `query (${varDefs}) { ${selections} } ${pullRequestRowFragment()}`,
+    vars,
+  )
+  const rows: CachedRow[] = []
+  for (let i = 0; i < batch.length; i++) {
+    const pullRequest = data[`x${i}`]?.pullRequest
+    if (!pullRequest) continue
+    if (pullRequest.state !== 'OPEN') {
+      threadByNode.delete(pullRequest.id)
+      pendingThreadIds.delete(refKey(batch[i]))
+      removeCachedRow(pullRequest.id)
+      continue
+    }
+    const row = toPullRequestRow(pullRequest)
+    const threadId = pendingThreadIds.get(refKey(batch[i]))
+    if (threadId) {
+      threadByNode.set(row.nodeId, threadId)
+      pendingThreadIds.delete(refKey(batch[i]))
+      row.unread = true
+    }
+    rows.push(row)
+  }
+  putCachedRows(rows)
+}
+
 // ---------- Reconciliation: the complete desired set, on a slow timer ----------
 
 async function reconcile(): Promise<void> {
-  type SearchResult = {
-    search: {
-      nodes: (GqlIssueRow | Record<string, never>)[]
-      pageInfo: { hasNextPage: boolean; endCursor: string | null }
-    }
-  }
   const configured = settingsRepo()
   if (!configured) {
     clearCachedRows()
     emitRows()
     return
   }
-  const query = `is:issue repo:${configured} state:open sort:updated-desc`
   const rows: CachedRow[] = []
   const keep = new Set<string>()
+  if (!(await reconcileIssues(configured, rows, keep))) return
+  if (!(await reconcilePullRequests(configured, rows, keep))) return
+  putCachedRows(rows)
+  pruneCachedRows(keep)
+  emitRows()
+}
+
+async function reconcileIssues(configured: string, rows: CachedRow[], keep: Set<string>): Promise<boolean> {
+  type SearchResult = {
+    search: {
+      nodes: (GqlIssueRow | Record<string, never>)[]
+      pageInfo: { hasNextPage: boolean; endCursor: string | null }
+    }
+  }
+  const query = `is:issue repo:${configured} state:open sort:updated-desc`
   let after: string | null = null
   for (;;) {
     const data: SearchResult = await rowQuery<SearchResult>(
@@ -350,13 +478,51 @@ async function reconcile(): Promise<void> {
     if (budgetDegraded()) {
       putCachedRows(rows)
       emitRows()
-      return
+      return false
     }
     after = data.search.pageInfo.endCursor
   }
-  putCachedRows(rows)
-  pruneCachedRows(keep)
-  emitRows()
+  return true
+}
+
+async function reconcilePullRequests(
+  configured: string,
+  rows: CachedRow[],
+  keep: Set<string>,
+): Promise<boolean> {
+  type SearchResult = {
+    search: {
+      nodes: (GqlPullRequestRow | Record<string, never>)[]
+      pageInfo: { hasNextPage: boolean; endCursor: string | null }
+    }
+  }
+  const query = `is:pr repo:${configured} state:open sort:updated-desc`
+  let after: string | null = null
+  for (;;) {
+    const data: SearchResult = await graphql<SearchResult>(
+      `query ($q: String!, $after: String) {
+        search(query: $q, type: ISSUE, first: 100, after: $after) {
+          nodes { ...PullRequestRowFields }
+          pageInfo { hasNextPage endCursor }
+        }
+      } ${pullRequestRowFragment()}`,
+      { q: query, after },
+    )
+    for (const node of data.search.nodes) {
+      if (!('id' in node)) continue
+      const row = toPullRequestRow(node as GqlPullRequestRow)
+      keep.add(row.nodeId)
+      rows.push(row)
+    }
+    if (!data.search.pageInfo.hasNextPage) break
+    if (budgetDegraded()) {
+      putCachedRows(rows)
+      emitRows()
+      return false
+    }
+    after = data.search.pageInfo.endCursor
+  }
+  return true
 }
 
 // ---------- Read state ----------

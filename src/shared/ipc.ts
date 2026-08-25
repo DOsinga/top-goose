@@ -6,6 +6,7 @@ import type {
   GooseStreamEvent,
   IssueDetail,
   PendingDraft,
+  PullRequestDetail,
   ProjectField,
   ProjectSummary,
   RateBudget,
@@ -45,6 +46,11 @@ export type InvokeMap = {
   'issue:setAssignee': (nodeId: string, login: string | null) => string[]
   'issue:setStatus': (nodeId: string, status: string) => void
   'issue:setSnooze': (nodeId: string, date: string | null) => void
+
+  // pull request detail
+  'pullRequest:open': (nodeId: string) => PullRequestDetail
+  'pullRequest:reply': (nodeId: string, body: string) => IssueComment_
+  'pullRequest:approve': (nodeId: string) => PullRequestDetail
 
   // board setup
   'board:listProjects': (repo: string) => ProjectSummary[]

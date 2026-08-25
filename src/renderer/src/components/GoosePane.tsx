@@ -17,6 +17,7 @@ const KIND_ICONS: Record<string, string> = {
 
 export function GoosePane(): React.JSX.Element {
   const selected = useStore((s) => s.selectedNodeId)
+  const kind = useStore((s) => s.conversationKind)
   const chat = useStore((s) => (selected ? s.gooseChats[selected] : undefined))
   const promptGoose = useStore((s) => s.promptGoose)
   const cancelGoose = useStore((s) => s.cancelGoose)
@@ -63,7 +64,8 @@ export function GoosePane(): React.JSX.Element {
         )}
         {chat?.loaded && chat.messages.length === 0 && (
           <div className="text-[12px] text-gray-400">
-            Ask about this issue: “What is being asked here?”, “Find the relevant code.”, “Draft a reply.”
+            Ask about this {kind === 'issue' ? 'issue' : 'pull request'}: “What is being asked here?”, “Find the
+            relevant code.”, “Draft a reply.”
           </div>
         )}
         {chat?.messages.map((m) => <GooseBubble key={m.id} message={m} />)}

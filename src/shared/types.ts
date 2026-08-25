@@ -48,7 +48,10 @@ export type AuthState = {
 
 // ---------- Sidebar ----------
 
+export type ConversationKind = 'issue' | 'pullRequest'
+
 export type CachedRow = {
+  kind: ConversationKind
   repo: string
   issueNumber: number
   nodeId: string
@@ -68,6 +71,9 @@ export type CachedRow = {
   unread?: boolean
   /** a Goose draft is waiting for this issue */
   hasPendingDraft?: boolean
+  isDraft?: boolean
+  reviewDecision?: 'APPROVED' | 'CHANGES_REQUESTED' | 'REVIEW_REQUIRED'
+  reviewRequestedFrom?: string[]
 }
 
 // ---------- Issue detail (center pane) ----------
@@ -103,6 +109,66 @@ export type IssueDetail = {
   snoozedUntil?: string
   /** status labels available on this repo's board */
   availableStatuses: string[]
+}
+
+// ---------- Pull request detail (center pane) ----------
+
+export type PullRequestReview = {
+  id: number
+  nodeId: string
+  author: string
+  authorAvatarUrl?: string
+  body: string
+  state: 'APPROVED' | 'CHANGES_REQUESTED' | 'COMMENTED' | 'DISMISSED' | 'PENDING'
+  submittedAt?: string
+}
+
+export type PullRequestReviewComment = {
+  id: number
+  nodeId: string
+  author: string
+  authorAvatarUrl?: string
+  body: string
+  createdAt: string
+  updatedAt: string
+  path: string
+  line?: number
+  originalLine?: number
+  diffHunk: string
+}
+
+export type PullRequestReviewThread = {
+  id: string
+  resolved: boolean
+  comments: PullRequestReviewComment[]
+}
+
+export type PullRequestDetail = {
+  repo: string
+  pullRequestNumber: number
+  nodeId: string
+  title: string
+  state: 'open' | 'closed'
+  merged: boolean
+  author: string
+  authorAvatarUrl?: string
+  assignees: string[]
+  labels: { name: string; color: string }[]
+  body: string
+  createdAt: string
+  updatedAt: string
+  isDraft: boolean
+  baseRefName: string
+  headRefName: string
+  headRepo?: string
+  mergeable: 'MERGEABLE' | 'CONFLICTING' | 'UNKNOWN'
+  reviewDecision?: 'APPROVED' | 'CHANGES_REQUESTED' | 'REVIEW_REQUIRED'
+  requestedReviewers: string[]
+  viewerReviewState?: PullRequestReview['state']
+  checks?: { state: 'SUCCESS' | 'FAILURE' | 'PENDING' | 'ERROR' | 'EXPECTED'; total: number }
+  comments: IssueComment[]
+  reviews: PullRequestReview[]
+  reviewThreads: PullRequestReviewThread[]
 }
 
 // ---------- Goose conversation (right pane) ----------
