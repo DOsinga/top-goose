@@ -222,7 +222,7 @@ async function openIssueSessionInner(issueNodeId: string): Promise<GooseSessionV
     applyReplay(live, replay)
     live.currentAgent = undefined
     await attachDraftServer(mapping.sessionId, issueNodeId, cwd)
-    await applyInstructions(mapping.sessionId, mapping.repo)
+    await applyInstructions(mapping.sessionId, mapping.kind ?? 'issue')
   } catch (err) {
     liveByIssue.delete(issueNodeId)
     issueBySessionId.delete(mapping.sessionId)
@@ -258,6 +258,7 @@ export async function promptIssue(issueNodeId: string, text: string): Promise<vo
   live.messages.push({ role: 'user', id: `local-${Date.now()}`, text })
   try {
     const mapping = await ensureSession(issueNodeId, live)
+    await applyInstructions(mapping.sessionId, mapping.kind ?? 'issue')
     const isFirstTurn = mapping.lastSyncedIssueUpdatedAt === undefined
     const sync = await buildContext(mapping, isFirstTurn)
 
@@ -301,7 +302,6 @@ async function ensureSession(issueNodeId: string, live: LiveSession): Promise<Is
     applyReplay(live, replay)
     live.currentAgent = undefined
     await attachDraftServer(existing.sessionId, issueNodeId, existingCwd)
-    await applyInstructions(existing.sessionId, existing.repo)
     return existing
   }
 
@@ -331,7 +331,6 @@ async function ensureSession(issueNodeId: string, live: LiveSession): Promise<Is
   saveIssueSession(mapping)
   live.sessionId = sessionId
   issueBySessionId.set(sessionId, issueNodeId)
-  await applyInstructions(sessionId, row.repo)
   return mapping
 }
 
@@ -348,18 +347,17 @@ async function sessionCwd(mapping: IssueSession): Promise<string> {
 }
 
 /**
- * Global + per-repo instructions, appended to the session's system prompt.
- * Not persisted by goose, so re-applied after every load. Older binaries
- * without the method just skip this; instructions then only exist in
- * whatever the user writes.
+ * Global + issue/PR instructions, appended to the session's system prompt.
+ * Not persisted by goose, so re-applied after every load and before every
+ * turn. Older binaries without the method just skip this.
  */
-async function applyInstructions(sessionId: string, repo: string): Promise<void> {
+async function applyInstructions(sessionId: string, kind: 'issue' | 'pullRequest'): Promise<void> {
   const s = settings().get()
   try {
     await acp.setSystemPromptExtra(
       sessionId,
       'top-goose-instructions',
-      sessionInstructions(s.globalInstructions, repoConfig(repo)?.instructions),
+      sessionInstructions(s, kind),
     )
   } catch (err) {
     console.warn('[goose] could not set instructions:', err)

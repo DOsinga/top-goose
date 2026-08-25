@@ -48,7 +48,7 @@ Top Goose auto-discovers goose (Goose Desktop bundle, Homebrew, `~/.local/bin`, 
 
 Browse to your local clone; the GitHub repository is derived from its `origin` remote, and the sidebar scopes itself to that repository. The clone is what gives Goose code access. Leave **worktrees** on unless the sessions are strictly read-only: each session then runs in its own `issue-N` or `pr-N` worktree so parallel sessions can't trample each other or your checkout. Opening a PR never checks out or runs contributor code; Goose can check it out deliberately when asked.
 
-Optionally pick a Projects V2 board plus its `Status` and snooze (date) fields — that lights up the status dropdown in the issue header, the status tags in the sidebar, and snoozing (snoozed issues sink to the bottom until their date passes). Per-repo instructions typed here are appended to every Goose session's system prompt.
+Optionally pick a Projects V2 board plus its `Status` and snooze (date) fields — that lights up the status dropdown in the issue header, the status tags in the sidebar, and snoozing (snoozed issues sink to the bottom until their date passes). Settings also has separate instruction fields for issue and pull request sessions; Top Goose appends the matching text to Goose's system prompt automatically.
 
 ## How it talks to GitHub
 

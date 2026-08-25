@@ -19,7 +19,6 @@ export type RepoConfig = {
   path: string
   board?: BoardConfig
   useWorktrees: boolean
-  instructions?: string
 }
 
 export type Settings = {
@@ -27,6 +26,10 @@ export type Settings = {
   goosePath?: string
   /** instructions appended to every session's system prompt */
   globalInstructions?: string
+  /** instructions appended to issue sessions */
+  issueInstructions?: string
+  /** instructions appended to pull request sessions */
+  pullRequestInstructions?: string
   /** the one repository this app is set up for */
   repo?: RepoConfig
 }
