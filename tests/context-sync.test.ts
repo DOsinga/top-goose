@@ -10,6 +10,8 @@ const github = vi.hoisted(() => ({
 }))
 
 const pullRequests = vi.hoisted(() => ({
+  pullRequest: {} as Record<string, unknown>,
+  fetchPullRequest: vi.fn(),
   fetchPullRequestConversation: vi.fn(),
 }))
 
@@ -19,6 +21,7 @@ vi.mock('../src/main/github/issues', () => ({
 }))
 
 vi.mock('../src/main/github/pullRequests', () => ({
+  fetchPullRequest: pullRequests.fetchPullRequest,
   fetchPullRequestConversation: pullRequests.fetchPullRequestConversation,
 }))
 
@@ -66,6 +69,7 @@ beforeEach(() => {
   github.comments = [comment(1, 'first')]
   github.fetchIssue.mockReset().mockImplementation(async () => github.issue)
   github.fetchComments.mockReset().mockImplementation(async () => github.comments)
+  pullRequests.fetchPullRequest.mockReset().mockImplementation(async () => pullRequests.pullRequest)
   pullRequests.fetchPullRequestConversation.mockReset()
 })
 
@@ -115,6 +119,7 @@ describe('pull request context synchronization', () => {
         },
       ],
     }
+    pullRequests.pullRequest = conversation.pullRequest
     pullRequests.fetchPullRequestConversation.mockResolvedValue(conversation)
     const pullRequestSession = { ...session(), kind: 'pullRequest' as const, issueNumber: 2 }
 
@@ -126,6 +131,7 @@ describe('pull request context synchronization', () => {
     expect(first.contextBlock).toContain('Inline comment')
     expect(first.contextBlock).toContain('src/file.ts')
     expect(unchanged.contextBlock).toBeNull()
+    expect(pullRequests.fetchPullRequestConversation).toHaveBeenCalledTimes(1)
   })
 })
 

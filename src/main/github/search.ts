@@ -19,9 +19,17 @@ type RestSearchResult = {
   items: RestSearchItem[]
 }
 
+export function scopedSearchQuery(repo: string, query: string): string {
+  const trimmed = query.trim()
+  if (/(^|\s|\()\-?(repo|org|user):/i.test(trimmed) || /(^|\s)OR(?=\s|$)/.test(trimmed)) {
+    throw new Error('Search is fixed to the configured repository; remove repo, org, user, and OR qualifiers')
+  }
+  return `repo:${repo} ${trimmed}`
+}
+
 export async function searchConversations(repo: string, query: string): Promise<CachedRow[]> {
   const params = new URLSearchParams({
-    q: `repo:${repo} ${query.trim()}`,
+    q: scopedSearchQuery(repo, query),
     per_page: '50',
   })
   const response = await restGet<RestSearchResult>(`/search/issues?${params}`)

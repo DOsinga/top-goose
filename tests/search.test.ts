@@ -4,7 +4,7 @@ const github = vi.hoisted(() => ({ restGet: vi.fn() }))
 
 vi.mock('../src/main/github/client', () => ({ restGet: github.restGet }))
 
-const { searchConversations } = await import('../src/main/github/search')
+const { scopedSearchQuery, searchConversations } = await import('../src/main/github/search')
 
 beforeEach(() => github.restGet.mockReset())
 
@@ -63,5 +63,14 @@ describe('GitHub conversation search', () => {
         state: 'open',
       }),
     ])
+  })
+
+  it('rejects query syntax that could escape the configured repository', () => {
+    expect(() => scopedSearchQuery('owner/repo', 'repo:someone/else crash')).toThrow(
+      'Search is fixed to the configured repository',
+    )
+    expect(() => scopedSearchQuery('owner/repo', 'crash OR author:someone')).toThrow(
+      'Search is fixed to the configured repository',
+    )
   })
 })

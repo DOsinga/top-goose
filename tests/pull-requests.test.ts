@@ -40,4 +40,19 @@ describe('pull request review threads', () => {
       }),
     ])
   })
+
+  it('keeps GraphQL resolution state when the REST root comment was deleted', () => {
+    const threads = groupReviewThreads(
+      [reviewComment(2, 1)],
+      new Map([[2, { id: 'thread-one', resolved: true }]]),
+    )
+
+    expect(threads).toEqual([
+      expect.objectContaining({
+        id: 'thread-one',
+        resolved: true,
+        comments: [expect.objectContaining({ id: 2 })],
+      }),
+    ])
+  })
 })

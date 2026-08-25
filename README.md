@@ -53,7 +53,7 @@ Optionally pick a Projects V2 board plus its `Status` and snooze (date) fields â
 ## How it talks to GitHub
 
 - Change detection polls `/notifications` with `If-None-Match`; an idle repository costs zero rate limit.
-- Reconciliation fetches every open issue and pull request in the configured repository every 5 minutes to establish both sidebar sets.
+- Reconciliation fetches only the IDs and update timestamps of every open issue and pull request every 5 minutes to establish both sidebar sets.
 - Hydration uses batched GraphQL queries over only the conversations that changed. Every query carries `rateLimit { cost remaining }`; below a floor of remaining points the app degrades to cached rows instead of querying.
 
 ## How it talks to Goose

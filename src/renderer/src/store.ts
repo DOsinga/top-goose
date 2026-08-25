@@ -365,7 +365,13 @@ export const useStore = create<State>((set, get) => ({
         state.generation !== generation
           ? state
           : {
-              composers: { ...state.composers, [selectedNodeId]: { ...emptyComposer } },
+              composers: {
+                ...state.composers,
+                [selectedNodeId]: {
+                  ...emptyComposer,
+                  offeredDraft: state.composers[selectedNodeId]?.offeredDraft,
+                },
+              },
               issue:
                 state.selectedNodeId === selectedNodeId && state.issue?.nodeId === selectedNodeId
                   ? { ...state.issue, comments: [...state.issue.comments, comment] }
@@ -410,7 +416,13 @@ export const useStore = create<State>((set, get) => ({
         state.generation !== generation
           ? state
           : {
-              composers: { ...state.composers, [selectedNodeId]: { ...emptyComposer } },
+              composers: {
+                ...state.composers,
+                [selectedNodeId]: {
+                  ...emptyComposer,
+                  offeredDraft: state.composers[selectedNodeId]?.offeredDraft,
+                },
+              },
               pullRequest:
                 state.selectedNodeId === selectedNodeId && state.pullRequest?.nodeId === selectedNodeId
                   ? { ...state.pullRequest, comments: [...state.pullRequest.comments, comment] }

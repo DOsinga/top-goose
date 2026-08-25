@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import type { IssueComment } from '../../shared/types'
 import { fetchComments, fetchIssue } from '../github/issues'
-import { fetchPullRequestConversation } from '../github/pullRequests'
+import { fetchPullRequest, fetchPullRequestConversation } from '../github/pullRequests'
 import type { IssueSession } from '../store'
 import { FINISH_THE_TURN } from './instructions'
 
@@ -152,9 +152,27 @@ export async function buildContext(session: IssueSession, isFirstTurn: boolean):
 }
 
 async function buildPullRequestContext(session: IssueSession, isFirstTurn: boolean): Promise<SyncResult> {
-  const { pullRequest, comments, reviews, reviewThreads } = await fetchPullRequestConversation(
+  const pullRequest = await fetchPullRequest(session.repo, session.issueNumber)
+  if (
+    !isFirstTurn &&
+    session.lastSyncedHistoryHash &&
+    pullRequest.updated_at === session.lastSyncedIssueUpdatedAt
+  ) {
+    return {
+      contextBlock: null,
+      cursors: {
+        lastSyncedCommentId: session.lastSyncedCommentId,
+        lastSyncedIssueUpdatedAt: session.lastSyncedIssueUpdatedAt,
+        lastSyncedCommentCount: session.lastSyncedCommentCount,
+        lastSyncedBodyUpdatedAt: session.lastSyncedBodyUpdatedAt,
+        lastSyncedHistoryHash: session.lastSyncedHistoryHash,
+      },
+    }
+  }
+  const { comments, reviews, reviewThreads } = await fetchPullRequestConversation(
     session.repo,
     session.issueNumber,
+    pullRequest,
   )
   const value = {
     pullRequest: {

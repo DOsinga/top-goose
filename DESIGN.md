@@ -236,7 +236,7 @@ Notifications alone cannot produce the sidebar. `/notifications` returns unread 
 
 Discovery and change detection are therefore separate jobs:
 
-- **Reconciliation** establishes the complete desired set with GraphQL searches for every open issue and PR in the configured repository. It runs at startup and then on a slow timer, measured in minutes.
+- **Reconciliation** establishes the complete desired set with lightweight GraphQL searches for each open issue and PR's ID and update timestamp. It runs at startup and then on a slow timer, measured in minutes.
 - **Change detection** notices activity within that set, using notifications.
 
 Reconciliation must stay on the slow path. `search` is the expensive GraphQL connection and carries its own throttle, so it does not belong on the poll tick. Rows that reconciliation drops from the set are removed; rows it adds are hydrated like any other.
@@ -251,7 +251,7 @@ This is the loop that runs continuously.
 
 A sidebar row needs the title, workflow status, snooze date, comment count, and latest activity snippet. Assembling that per row over REST is many calls, and workflow status is not available over REST at all.
 
-So hydration is a single batched GraphQL query over the issues that notifications says actually changed, fetched by node ID.
+So hydration is a batched GraphQL query over conversations that notifications or lightweight reconciliation says actually changed, fetched by repository and number.
 
 Nothing changed means no GraphQL call at all. The cost of running Top Goose therefore tracks real activity rather than uptime.
 
@@ -259,7 +259,7 @@ Nothing changed means no GraphQL call at all. The cost of running Top Goose ther
 
 GraphQL is budgeted at 5,000 points per hour, where a query's cost is approximately its total connection fetches divided by 100, rounded up, minimum 1.
 
-A sidebar query returning 50 issues, each with a small page of labels, project field values, and one latest comment, costs on the order of 150 fetches, so about 2 points. That is cheap. The hourly budget is not the real constraint for this shape of query.
+Nested project fields make a fully hydrated page materially more expensive than a discovery page. Reconciliation therefore requests only IDs and update timestamps; the nested row fragment is reserved for new and changed conversations.
 
 Quota exhaustion in practice comes from four things, and the design avoids each:
 
@@ -318,9 +318,9 @@ type CachedRow = {
 }
 ```
 
-Cache the rendered row rather than raw API payloads. `updatedAt` is the invalidation key: since GraphQL cannot return `304`, comparing the notification's timestamp against the cached row is the hand-rolled equivalent of a conditional request.
+Cache the rendered row rather than raw API payloads. `updatedAt` is the invalidation key for reconciliation. Notification timestamps belong to notification threads rather than issue objects, so change detection keeps a separate last-seen timestamp per thread.
 
-On launch the sidebar renders from cache first and reconciles afterwards, so a cold start is one batched query rather than dozens.
+On launch the sidebar renders from cache first and reconciles afterwards. A fresh cache hydrates new rows in batches rather than issuing one request per conversation.
 
 Both can initially live in a simple Electron persistence mechanism. If comment caching later grows enough to want indexed queries, SQLite is the natural next step, but it is not needed to start.
 
@@ -533,7 +533,7 @@ Snapshot-only for everything is the obvious simplification and is deliberately n
 
 If the fallback detection proves unreliable in practice, the retreat is snapshot-only, accepting the cost.
 
-Pull request synchronization uses snapshots. Its discussion includes three independently changing collections—general comments, review summaries, and inline threads—so a hash of the complete discussion is simpler and more reliable than maintaining three delta cursors. An unchanged hash sends no extra context; a changed hash sends the full current PR discussion.
+Pull request synchronization uses snapshots. A cheap PR metadata request first compares `updated_at`; only a changed PR fetches the independently changing collections of general comments, review summaries, and inline threads. A hash of that complete discussion then avoids sending duplicate context, while a changed hash sends the full current PR discussion.
 
 ## ACP(+) v1
 

@@ -222,14 +222,21 @@ export function groupReviewThreads(
     const id = rootId(comment)
     grouped.set(id, [...(grouped.get(id) ?? []), toReviewComment(comment)])
   }
-  return [...grouped.entries()].map(([id, threadComments]) => ({
-    id: metadata.get(id)?.id ?? `review-thread-${id}`,
-    resolved: metadata.get(id)?.resolved ?? false,
-    comments: threadComments,
-  }))
+  return [...grouped.entries()].map(([id, threadComments]) => {
+    const thread = metadata.get(id) ?? threadComments.map((comment) => metadata.get(comment.id)).find(Boolean)
+    return {
+      id: thread?.id ?? `review-thread-${id}`,
+      resolved: thread?.resolved ?? false,
+      comments: threadComments,
+    }
+  })
 }
 
-export async function fetchPullRequestConversation(repo: string, number: number): Promise<{
+export async function fetchPullRequestConversation(
+  repo: string,
+  number: number,
+  knownPullRequest?: RestPullRequest,
+): Promise<{
   pullRequest: RestPullRequest
   comments: Awaited<ReturnType<typeof fetchComments>>
   reviews: PullRequestReview[]
@@ -237,7 +244,7 @@ export async function fetchPullRequestConversation(repo: string, number: number)
   graph: Awaited<ReturnType<typeof fetchPullRequestGraph>>
 }> {
   const [pullRequest, comments, reviews, reviewComments, graph] = await Promise.all([
-    fetchPullRequest(repo, number),
+    knownPullRequest ?? fetchPullRequest(repo, number),
     fetchComments(repo, number),
     fetchPullRequestReviews(repo, number),
     fetchReviewComments(repo, number),

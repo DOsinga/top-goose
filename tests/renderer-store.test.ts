@@ -262,6 +262,75 @@ describe('GitHub replies', () => {
     expect(useStore.getState().issue?.comments).toHaveLength(1)
     expect(useStore.getState().composers.B?.text).toBe('')
   })
+
+  it('keeps a Goose draft that arrives while an issue reply is posting', async () => {
+    const posted = deferred<IssueComment>()
+    invoke.mockImplementation((channel: string) => {
+      if (channel === 'issue:reply') return posted.promise
+      return Promise.resolve()
+    })
+    useStore.setState({
+      selectedNodeId: 'B',
+      issue: issue('B', 2),
+      composers: { B: { text: 'my reply', dirty: true, sending: false } },
+    })
+
+    const posting = useStore.getState().reply()
+    useStore.setState((state) => ({
+      composers: {
+        ...state.composers,
+        B: { ...state.composers.B, offeredDraft: 'new Goose draft' },
+      },
+    }))
+    posted.resolve({
+      id: 11,
+      nodeId: 'comment-11',
+      author: 'me',
+      body: 'my reply',
+      createdAt: '2026-01-01T00:00:01Z',
+      updatedAt: '2026-01-01T00:00:01Z',
+    })
+    await posting
+
+    expect(useStore.getState().composers.B).toEqual(
+      expect.objectContaining({ text: '', offeredDraft: 'new Goose draft' }),
+    )
+  })
+
+  it('keeps a Goose draft that arrives while a pull request reply is posting', async () => {
+    const posted = deferred<IssueComment>()
+    invoke.mockImplementation((channel: string) => {
+      if (channel === 'pullRequest:reply') return posted.promise
+      return Promise.resolve()
+    })
+    useStore.setState({
+      conversationKind: 'pullRequest',
+      selectedNodeId: 'PR',
+      pullRequest: pullRequest('PR', 7),
+      composers: { PR: { text: 'my reply', dirty: true, sending: false } },
+    })
+
+    const posting = useStore.getState().replyToPullRequest()
+    useStore.setState((state) => ({
+      composers: {
+        ...state.composers,
+        PR: { ...state.composers.PR, offeredDraft: 'new Goose draft' },
+      },
+    }))
+    posted.resolve({
+      id: 12,
+      nodeId: 'comment-12',
+      author: 'me',
+      body: 'my reply',
+      createdAt: '2026-01-01T00:00:01Z',
+      updatedAt: '2026-01-01T00:00:01Z',
+    })
+    await posting
+
+    expect(useStore.getState().composers.PR).toEqual(
+      expect.objectContaining({ text: '', offeredDraft: 'new Goose draft' }),
+    )
+  })
 })
 
 describe('GitHub assignees', () => {
