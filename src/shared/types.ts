@@ -179,7 +179,6 @@ export type PullRequestDetail = {
   reviewDecision?: 'APPROVED' | 'CHANGES_REQUESTED' | 'REVIEW_REQUIRED'
   requestedReviewers: string[]
   viewerReviewState?: PullRequestReview['state']
-  checks?: { state: 'SUCCESS' | 'FAILURE' | 'PENDING' | 'ERROR' | 'EXPECTED'; total: number }
   comments: IssueComment[]
   reviews: PullRequestReview[]
   reviewThreads: PullRequestReviewThread[]

@@ -44,6 +44,10 @@ function PullRequestHeader({ pullRequest }: { pullRequest: PullRequestDetail }):
   const approving = useStore((state) => state.approvalSaving)
   const closing = useStore((state) => state.closingPullRequest)
   const url = `https://github.com/${pullRequest.repo}/pull/${pullRequest.pullRequestNumber}`
+  const headBranchUrl = pullRequest.headRepo
+    ? branchUrl(pullRequest.headRepo, pullRequest.headRefName)
+    : undefined
+  const baseBranchUrl = branchUrl(pullRequest.repo, pullRequest.baseRefName)
   const ownPullRequest = pullRequest.author.toLowerCase() === login?.toLowerCase()
   const approved = pullRequest.viewerReviewState === 'APPROVED'
   const canApprove = pullRequest.state === 'open' && !ownPullRequest && !approved
@@ -102,15 +106,19 @@ function PullRequestHeader({ pullRequest }: { pullRequest: PullRequestDetail }):
         <span>by {pullRequest.author}</span>
         <ConversationLinks links={pullRequest.linkedIssues} />
         <span className="rounded bg-gray-100 px-1.5 py-px font-mono text-[11px]">
-          {pullRequest.headRefName} → {pullRequest.baseRefName}
+          {headBranchUrl ? (
+            <a href={headBranchUrl} className="hover:text-accent hover:underline">
+              {pullRequest.headRefName}
+            </a>
+          ) : (
+            pullRequest.headRefName
+          )}{' '}
+          →{' '}
+          <a href={baseBranchUrl} className="hover:text-accent hover:underline">
+            {pullRequest.baseRefName}
+          </a>
         </span>
         <MetaBadge value={mergeableLabel(pullRequest.mergeable)} tone={pullRequest.mergeable === 'CONFLICTING' ? 'red' : 'gray'} />
-        {pullRequest.checks && (
-          <MetaBadge
-            value={`${checksLabel(pullRequest.checks.state)} (${pullRequest.checks.total})`}
-            tone={pullRequest.checks.state === 'SUCCESS' ? 'green' : pullRequest.checks.state === 'PENDING' ? 'amber' : 'red'}
-          />
-        )}
         {pullRequest.reviewDecision && (
           <MetaBadge
             value={reviewLabel(pullRequest.reviewDecision)}
@@ -148,10 +156,9 @@ function mergeableLabel(value: PullRequestDetail['mergeable']): string {
   return 'mergeability pending'
 }
 
-function checksLabel(value: NonNullable<PullRequestDetail['checks']>['state']): string {
-  if (value === 'SUCCESS') return 'checks passed'
-  if (value === 'PENDING' || value === 'EXPECTED') return 'checks pending'
-  return 'checks failed'
+function branchUrl(repo: string, branch: string): string {
+  const path = branch.split('/').map(encodeURIComponent).join('/')
+  return `https://github.com/${repo}/tree/${path}`
 }
 
 function reviewLabel(value: NonNullable<PullRequestDetail['reviewDecision']>): string {

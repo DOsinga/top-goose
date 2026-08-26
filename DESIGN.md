@@ -121,7 +121,7 @@ Replies from Top Goose are posted directly to GitHub.
 
 ### Pull Request Center Pane
 
-Pull requests have their own center view. The header shows branches, draft state, mergeability, checks, review decision, requested reviewers, and assignees. The transcript combines the description, general comments, submitted review summaries, and inline review threads in time order. Inline threads retain their file, line, diff hunk, replies, and resolved state.
+Pull requests have their own center view. The header shows linked branches, draft state, mergeability, review decision, requested reviewers, and assignees. The transcript combines the description, general comments, submitted review summaries, and inline review threads in time order. Inline threads retain their file, line, diff hunk, replies, and resolved state.
 
 The header also lists the issues GitHub says the pull request closes. These use the same in-app navigation as issue-to-PR links and GitHub search results.
 

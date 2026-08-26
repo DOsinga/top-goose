@@ -61,16 +61,6 @@ type PullRequestGraph = {
             | null
         }[]
       }
-      commits: {
-        nodes: {
-          commit: {
-            statusCheckRollup: {
-              state: NonNullable<PullRequestDetail['checks']>['state']
-              contexts: { totalCount: number }
-            } | null
-          }
-        }[]
-      }
       reviewThreads: {
         nodes: {
           id: string
@@ -134,7 +124,6 @@ async function fetchPullRequestGraph(repo: string, number: number): Promise<{
   reviewDecision: PullRequestDetail['reviewDecision']
   mergeable: PullRequestDetail['mergeable']
   requestedReviewers: string[]
-  checks: PullRequestDetail['checks']
   threads: Map<number, { id: string; resolved: boolean }>
   linkedIssues: ConversationLink[]
 }> {
@@ -143,7 +132,6 @@ async function fetchPullRequestGraph(repo: string, number: number): Promise<{
   let reviewDecision: PullRequestDetail['reviewDecision']
   let mergeable: PullRequestDetail['mergeable'] = 'UNKNOWN'
   let requestedReviewers: string[] = []
-  let checks: PullRequestDetail['checks']
   const threads = new Map<number, { id: string; resolved: boolean }>()
   let linkedIssues: ConversationLink[] = []
 
@@ -159,13 +147,6 @@ async function fetchPullRequestGraph(repo: string, number: number): Promise<{
                 requestedReviewer {
                   ... on User { login }
                   ... on Team { name slug }
-                }
-              }
-            }
-            commits(last: 1) {
-              nodes {
-                commit {
-                  statusCheckRollup { state contexts(first: 1) { totalCount } }
                 }
               }
             }
@@ -189,8 +170,6 @@ async function fetchPullRequestGraph(repo: string, number: number): Promise<{
       if (!requestedReviewer) return []
       return [requestedReviewer.login ?? requestedReviewer.slug ?? requestedReviewer.name ?? 'unknown']
     })
-    const rollup = pullRequest.commits.nodes[0]?.commit.statusCheckRollup
-    checks = rollup ? { state: rollup.state, total: rollup.contexts.totalCount } : undefined
     linkedIssues = (pullRequest.closingIssuesReferences?.nodes ?? []).map((issue) => ({
       kind: 'issue',
       repo: issue.repository.nameWithOwner,
@@ -207,7 +186,7 @@ async function fetchPullRequestGraph(repo: string, number: number): Promise<{
     if (!pullRequest.reviewThreads.pageInfo.hasNextPage) break
     after = pullRequest.reviewThreads.pageInfo.endCursor
   }
-  return { reviewDecision, mergeable, requestedReviewers, checks, threads, linkedIssues }
+  return { reviewDecision, mergeable, requestedReviewers, threads, linkedIssues }
 }
 
 function toReviewComment(comment: RestReviewComment): PullRequestReviewComment {
@@ -319,7 +298,6 @@ export async function fetchPullRequestDetail(repo: string, number: number): Prom
     reviewDecision: graph.reviewDecision,
     requestedReviewers: graph.requestedReviewers,
     viewerReviewState,
-    checks: graph.checks,
     comments,
     reviews,
     reviewThreads,
