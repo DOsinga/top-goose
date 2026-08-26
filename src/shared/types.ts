@@ -51,6 +51,16 @@ export type AuthState = {
 
 export type ConversationKind = 'issue' | 'pullRequest'
 
+export type ConversationLink = {
+  kind: ConversationKind
+  repo: string
+  issueNumber: number
+  nodeId: string
+  title: string
+  state: string
+  updatedAt: string
+}
+
 export type CachedRow = {
   kind: ConversationKind
   repo: string
@@ -107,6 +117,7 @@ export type IssueDetail = {
   createdAt: string
   updatedAt: string
   comments: IssueComment[]
+  linkedPullRequests: ConversationLink[]
   /** from board config, if the repo has one */
   workflowStatus?: string
   snoozedUntil?: string
@@ -172,6 +183,7 @@ export type PullRequestDetail = {
   comments: IssueComment[]
   reviews: PullRequestReview[]
   reviewThreads: PullRequestReviewThread[]
+  linkedIssues: ConversationLink[]
 }
 
 // ---------- Goose conversation (right pane) ----------

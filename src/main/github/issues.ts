@@ -1,6 +1,6 @@
-import type { IssueComment, IssueDetail } from '../../shared/types'
+import type { ConversationLink, IssueComment, IssueDetail } from '../../shared/types'
 import { repoConfig } from '../store'
-import { restGet, restSend } from './client'
+import { graphql, restGet, restSend } from './client'
 import { boardItemForIssue } from './projects'
 
 type RestIssue = {
@@ -62,7 +62,11 @@ export async function fetchComments(
 }
 
 export async function fetchIssueDetail(repo: string, issueNumber: number): Promise<IssueDetail> {
-  const [issue, comments] = await Promise.all([fetchIssue(repo, issueNumber), fetchComments(repo, issueNumber)])
+  const [issue, comments, linkedPullRequests] = await Promise.all([
+    fetchIssue(repo, issueNumber),
+    fetchComments(repo, issueNumber),
+    fetchLinkedPullRequests(repo, issueNumber),
+  ])
 
   const config = repoConfig(repo)
   let workflowStatus: string | undefined
@@ -93,10 +97,52 @@ export async function fetchIssueDetail(repo: string, issueNumber: number): Promi
     createdAt: issue.created_at,
     updatedAt: issue.updated_at,
     comments,
+    linkedPullRequests,
     workflowStatus,
     snoozedUntil,
     availableStatuses: config?.board ? Object.keys(config.board.statusOptions) : [],
   }
+}
+
+async function fetchLinkedPullRequests(repo: string, issueNumber: number): Promise<ConversationLink[]> {
+  const [owner, name] = repo.split('/')
+  type Result = {
+    repository: {
+      issue: {
+        closedByPullRequestsReferences: {
+          nodes: {
+            id: string
+            number: number
+            title: string
+            state: string
+            updatedAt: string
+            repository: { nameWithOwner: string }
+          }[]
+        }
+      } | null
+    } | null
+  }
+  const data = await graphql<Result>(
+    `query ($owner: String!, $name: String!, $number: Int!) {
+      repository(owner: $owner, name: $name) {
+        issue(number: $number) {
+          closedByPullRequestsReferences(first: 100) {
+            nodes { id number title state updatedAt repository { nameWithOwner } }
+          }
+        }
+      }
+    }`,
+    { owner, name, number: issueNumber },
+  )
+  return (data.repository?.issue?.closedByPullRequestsReferences.nodes ?? []).map((pullRequest) => ({
+    kind: 'pullRequest',
+    repo: pullRequest.repository.nameWithOwner,
+    issueNumber: pullRequest.number,
+    nodeId: pullRequest.id,
+    title: pullRequest.title,
+    state: pullRequest.state.toLowerCase(),
+    updatedAt: pullRequest.updatedAt,
+  }))
 }
 
 export async function postComment(repo: string, issueNumber: number, body: string): Promise<IssueComment> {

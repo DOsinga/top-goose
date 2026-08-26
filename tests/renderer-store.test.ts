@@ -26,6 +26,7 @@ function issue(nodeId: string, issueNumber: number): IssueDetail {
     createdAt: '2026-01-01T00:00:00Z',
     updatedAt: '2026-01-01T00:00:00Z',
     comments: [],
+    linkedPullRequests: [],
     availableStatuses: [],
   }
 }
@@ -52,6 +53,7 @@ function pullRequest(nodeId: string, number: number): PullRequestDetail {
     comments: [],
     reviews: [],
     reviewThreads: [],
+    linkedIssues: [],
   }
 }
 
@@ -85,6 +87,63 @@ beforeEach(() => {
     gooseChats: {},
     gooseInputs: {},
     view: 'main',
+    navigationHistory: [],
+    navigationIndex: -1,
+  })
+})
+
+describe('conversation history', () => {
+  beforeEach(() => {
+    invoke.mockImplementation((channel: string, nodeId: string) => {
+      if (channel === 'issue:open') return Promise.resolve(issue(nodeId, nodeId === 'A' ? 1 : 3))
+      if (channel === 'pullRequest:open') return Promise.resolve(pullRequest(nodeId, 2))
+      if (channel === 'session:open') {
+        return Promise.resolve({ issueNodeId: nodeId, messages: [], busy: false, noWorkspace: false })
+      }
+      if (channel === 'draft:take') return Promise.resolve(null)
+      return Promise.resolve()
+    })
+  })
+
+  it('navigates backward and forward across issues and pull requests', async () => {
+    await useStore.getState().selectIssue('A')
+    await useStore.getState().selectPullRequest('B')
+    await useStore.getState().selectIssue('C')
+
+    await useStore.getState().goBack()
+    expect(useStore.getState()).toMatchObject({
+      conversationKind: 'pullRequest',
+      selectedNodeId: 'B',
+      navigationIndex: 1,
+    })
+
+    await useStore.getState().goBack()
+    expect(useStore.getState()).toMatchObject({
+      conversationKind: 'issue',
+      selectedNodeId: 'A',
+      navigationIndex: 0,
+    })
+
+    await useStore.getState().goForward()
+    expect(useStore.getState()).toMatchObject({
+      conversationKind: 'pullRequest',
+      selectedNodeId: 'B',
+      navigationIndex: 1,
+    })
+  })
+
+  it('drops forward history after opening another conversation', async () => {
+    await useStore.getState().selectIssue('A')
+    await useStore.getState().selectPullRequest('B')
+    await useStore.getState().goBack()
+    await useStore.getState().selectIssue('C')
+    await useStore.getState().goForward()
+
+    expect(useStore.getState().navigationHistory).toEqual([
+      { kind: 'issue', nodeId: 'A' },
+      { kind: 'issue', nodeId: 'C' },
+    ])
+    expect(useStore.getState().selectedNodeId).toBe('C')
   })
 })
 

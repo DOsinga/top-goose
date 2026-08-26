@@ -1,4 +1,5 @@
 import type {
+  ConversationLink,
   PullRequestDetail,
   PullRequestReview,
   PullRequestReviewComment,
@@ -78,6 +79,16 @@ type PullRequestGraph = {
         }[]
         pageInfo: { hasNextPage: boolean; endCursor: string | null }
       }
+      closingIssuesReferences: {
+        nodes: {
+          id: string
+          number: number
+          title: string
+          state: string
+          updatedAt: string
+          repository: { nameWithOwner: string }
+        }[]
+      }
     } | null
   } | null
 }
@@ -125,6 +136,7 @@ async function fetchPullRequestGraph(repo: string, number: number): Promise<{
   requestedReviewers: string[]
   checks: PullRequestDetail['checks']
   threads: Map<number, { id: string; resolved: boolean }>
+  linkedIssues: ConversationLink[]
 }> {
   const [owner, name] = repo.split('/')
   let after: string | null = null
@@ -133,6 +145,7 @@ async function fetchPullRequestGraph(repo: string, number: number): Promise<{
   let requestedReviewers: string[] = []
   let checks: PullRequestDetail['checks']
   const threads = new Map<number, { id: string; resolved: boolean }>()
+  let linkedIssues: ConversationLink[] = []
 
   for (;;) {
     const data: PullRequestGraph = await graphql<PullRequestGraph>(
@@ -160,6 +173,9 @@ async function fetchPullRequestGraph(repo: string, number: number): Promise<{
               nodes { id isResolved comments(first: 1) { nodes { databaseId } } }
               pageInfo { hasNextPage endCursor }
             }
+            closingIssuesReferences(first: 100) {
+              nodes { id number title state updatedAt repository { nameWithOwner } }
+            }
           }
         }
       }`,
@@ -175,6 +191,15 @@ async function fetchPullRequestGraph(repo: string, number: number): Promise<{
     })
     const rollup = pullRequest.commits.nodes[0]?.commit.statusCheckRollup
     checks = rollup ? { state: rollup.state, total: rollup.contexts.totalCount } : undefined
+    linkedIssues = (pullRequest.closingIssuesReferences?.nodes ?? []).map((issue) => ({
+      kind: 'issue',
+      repo: issue.repository.nameWithOwner,
+      issueNumber: issue.number,
+      nodeId: issue.id,
+      title: issue.title,
+      state: issue.state.toLowerCase(),
+      updatedAt: issue.updatedAt,
+    }))
     for (const thread of pullRequest.reviewThreads.nodes) {
       const rootId = thread.comments.nodes[0]?.databaseId
       if (rootId) threads.set(rootId, { id: thread.id, resolved: thread.isResolved })
@@ -182,7 +207,7 @@ async function fetchPullRequestGraph(repo: string, number: number): Promise<{
     if (!pullRequest.reviewThreads.pageInfo.hasNextPage) break
     after = pullRequest.reviewThreads.pageInfo.endCursor
   }
-  return { reviewDecision, mergeable, requestedReviewers, checks, threads }
+  return { reviewDecision, mergeable, requestedReviewers, checks, threads, linkedIssues }
 }
 
 function toReviewComment(comment: RestReviewComment): PullRequestReviewComment {
@@ -298,6 +323,7 @@ export async function fetchPullRequestDetail(repo: string, number: number): Prom
     comments,
     reviews,
     reviewThreads,
+    linkedIssues: graph.linkedIssues,
   }
 }
 

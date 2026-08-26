@@ -4,7 +4,7 @@ import { promisify } from 'node:util'
 
 const execFileP = promisify(execFile)
 import type { InvokeMap } from '../shared/ipc'
-import type { PendingDraft, RateBudget } from '../shared/types'
+import type { ConversationLink, PendingDraft, RateBudget } from '../shared/types'
 import * as activity from './activity'
 import { authState, setPat, signOut } from './github/auth'
 import { onBudgetChange, getBudget } from './github/client'
@@ -42,6 +42,11 @@ function broadcast(channel: string, payload: unknown): void {
   for (const win of BrowserWindow.getAllWindows()) {
     win.webContents.send(channel, payload)
   }
+}
+
+function rememberLinkedConversations(links: ConversationLink[]): void {
+  const hydratedAt = new Date().toISOString()
+  putSearchedRows(links.map((link) => ({ ...link, commentCount: 0, hydratedAt })))
 }
 
 export function registerIpc(): void {
@@ -154,7 +159,9 @@ export function registerIpc(): void {
   handle('issue:open', async (nodeId) => {
     const row = getConversationRow(nodeId)
     if (!row || row.kind !== 'issue') throw new Error('unknown issue')
-    return fetchIssueDetail(row.repo, row.issueNumber)
+    const issue = await fetchIssueDetail(row.repo, row.issueNumber)
+    rememberLinkedConversations(issue.linkedPullRequests)
+    return issue
   })
   handle('issue:markRead', (nodeId) => activity.markRead(nodeId))
   handle('issue:reply', async (nodeId, body) => {
@@ -209,7 +216,9 @@ export function registerIpc(): void {
   handle('pullRequest:open', async (nodeId) => {
     const row = getConversationRow(nodeId)
     if (!row || row.kind !== 'pullRequest') throw new Error('unknown pull request')
-    return fetchPullRequestDetail(row.repo, row.issueNumber)
+    const pullRequest = await fetchPullRequestDetail(row.repo, row.issueNumber)
+    rememberLinkedConversations(pullRequest.linkedIssues)
+    return pullRequest
   })
   handle('pullRequest:reply', async (nodeId, body) => {
     const row = getConversationRow(nodeId)

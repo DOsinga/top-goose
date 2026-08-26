@@ -78,6 +78,8 @@ Pull requests have separate filters for review requested, assigned, authored, ol
 
 Search uses GitHub's issue and pull request search, scoped to the configured repository. Results can include closed conversations and anything else outside the open-item index. Selecting a result switches to the matching issue or pull request view and opens the normal detail and persistent Goose panes without adding the result to the regular sidebar list.
 
+Conversation selection has browser-style history across both views. `⌘[` opens the previous issue or pull request and `⌘]` moves forward. Opening a new conversation after going back replaces the forward branch.
+
 This matters for the API design: Projects V2 fields exist only in GraphQL. There is no REST equivalent. Any view that shows workflow state, including the sidebar, requires a GraphQL read.
 
 The board also carries a snooze date as a Projects V2 date field. A snoozed issue is de-emphasized in the sidebar until its snooze date passes.
@@ -113,11 +115,15 @@ At the top:
 
 Below that, render the issue body and comments as a chat transcript.
 
+The header lists pull requests that GitHub associates through closing references. Selecting one opens its normal pull request view inside Top Goose, even if it is closed or absent from the sidebar.
+
 Replies from Top Goose are posted directly to GitHub.
 
 ### Pull Request Center Pane
 
 Pull requests have their own center view. The header shows branches, draft state, mergeability, checks, review decision, requested reviewers, and assignees. The transcript combines the description, general comments, submitted review summaries, and inline review threads in time order. Inline threads retain their file, line, diff hunk, replies, and resolved state.
+
+The header also lists the issues GitHub says the pull request closes. These use the same in-app navigation as issue-to-PR links and GitHub search results.
 
 General replies post to the PR's GitHub conversation. Approve submits an `APPROVE` review and then refreshes the displayed review state. Close closes the PR and removes it from the open sidebar. Other actions stay in the Goose pane: the user can ask Goose to inspect checks, comment, check out the PR, request changes, or merge it with `gh`.
 

@@ -7,6 +7,7 @@ import type {
 } from '../../../shared/types'
 import { isCodexReviewer } from '../codexReview'
 import { useStore } from '../store'
+import { ConversationLinks } from './ConversationLinks'
 import { Markdown } from './Markdown'
 import { ReplyComposer } from './ReplyComposer'
 
@@ -99,6 +100,7 @@ function PullRequestHeader({ pullRequest }: { pullRequest: PullRequestDetail }):
           {pullRequest.repo}#{pullRequest.pullRequestNumber}
         </a>
         <span>by {pullRequest.author}</span>
+        <ConversationLinks links={pullRequest.linkedIssues} />
         <span className="rounded bg-gray-100 px-1.5 py-px font-mono text-[11px]">
           {pullRequest.headRefName} → {pullRequest.baseRefName}
         </span>

@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import { coreTeam } from '../../../shared/coreTeam'
 import type { IssueDetail } from '../../../shared/types'
 import { useStore } from '../store'
+import { ConversationLinks } from './ConversationLinks'
 import { Markdown } from './Markdown'
 import { ReplyComposer } from './ReplyComposer'
 
@@ -84,6 +85,7 @@ function IssueHeader({ issue }: { issue: IssueDetail }): React.JSX.Element {
           {issue.repo}#{issue.issueNumber}
         </a>
         <span>by {issue.author}</span>
+        <ConversationLinks links={issue.linkedPullRequests} />
         <span className="flex items-center gap-1">
           <label htmlFor="issue-assignee" className="text-gray-400">
             assigned
