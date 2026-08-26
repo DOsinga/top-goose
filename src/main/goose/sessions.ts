@@ -8,7 +8,7 @@ import type {
 import { mcpServerConfig } from '../mcp/draftServer'
 import {
   getAuthMeta,
-  getCachedRow,
+  getConversationRow,
   getIssueSession,
   repoConfig,
   saveIssueSession,
@@ -17,11 +17,12 @@ import {
 } from '../store'
 import { acp, type SessionUpdate } from './acp'
 import { buildContext, promptWithContext, visibleUserMessage } from './contextSync'
+import { sessionInstructions } from './instructions'
 import { ensureWorktree } from './worktrees'
 
 /**
- * One persistent Goose session per GitHub issue. The mapping is keyed on the
- * issue node ID and owned by Top Goose; Goose owns the conversation history.
+ * One persistent Goose session per GitHub issue or pull request. The mapping
+ * is keyed on the GitHub node ID; Goose owns the conversation history.
  *
  * Opening an issue never causes an agent turn: if a mapping exists the
  * session is loaded (history replayed), otherwise the session is created
@@ -197,7 +198,7 @@ export function openIssueSession(issueNodeId: string): Promise<GooseSessionView>
 }
 
 async function openIssueSessionInner(issueNodeId: string): Promise<GooseSessionView> {
-  const row = getCachedRow(issueNodeId)
+  const row = getConversationRow(issueNodeId)
   const config = row ? repoConfig(row.repo) : undefined
   const noWorkspace = !config?.path
 
@@ -221,7 +222,7 @@ async function openIssueSessionInner(issueNodeId: string): Promise<GooseSessionV
     applyReplay(live, replay)
     live.currentAgent = undefined
     await attachDraftServer(mapping.sessionId, issueNodeId, cwd)
-    await applyInstructions(mapping.sessionId, mapping.repo)
+    await applyInstructions(mapping.sessionId, mapping.kind ?? 'issue')
   } catch (err) {
     liveByIssue.delete(issueNodeId)
     issueBySessionId.delete(mapping.sessionId)
@@ -257,10 +258,11 @@ export async function promptIssue(issueNodeId: string, text: string): Promise<vo
   live.messages.push({ role: 'user', id: `local-${Date.now()}`, text })
   try {
     const mapping = await ensureSession(issueNodeId, live)
+    await applyInstructions(mapping.sessionId, mapping.kind ?? 'issue')
     const isFirstTurn = mapping.lastSyncedIssueUpdatedAt === undefined
     const sync = await buildContext(mapping, isFirstTurn)
 
-    const prompt = sync.contextBlock ? promptWithContext(sync.contextBlock, text) : text
+    const prompt = promptWithContext(sync.contextBlock, text)
 
     live.currentAgent = undefined
     const result = await acp.prompt(mapping.sessionId, prompt)
@@ -288,8 +290,8 @@ async function ensureSession(issueNodeId: string, live: LiveSession): Promise<Is
   const existing = getIssueSession(issueNodeId)
   if (existing && live.sessionId) return existing
 
-  const row = getCachedRow(issueNodeId)
-  if (!row) throw new Error('issue not in sidebar cache')
+  const row = getConversationRow(issueNodeId)
+  if (!row) throw new Error('unknown GitHub conversation')
 
   if (existing) {
     // mapping exists but the session was never loaded this run
@@ -300,7 +302,6 @@ async function ensureSession(issueNodeId: string, live: LiveSession): Promise<Is
     applyReplay(live, replay)
     live.currentAgent = undefined
     await attachDraftServer(existing.sessionId, issueNodeId, existingCwd)
-    await applyInstructions(existing.sessionId, existing.repo)
     return existing
   }
 
@@ -311,7 +312,7 @@ async function ensureSession(issueNodeId: string, live: LiveSession): Promise<Is
   let cwd = config.path
   let worktreePath: string | undefined
   if (config.useWorktrees) {
-    worktreePath = await ensureWorktree(config.path, row.issueNumber)
+    worktreePath = await ensureWorktree(config.path, row.kind, row.issueNumber)
     cwd = worktreePath
   }
 
@@ -319,6 +320,7 @@ async function ensureSession(issueNodeId: string, live: LiveSession): Promise<Is
   await attachDraftServer(sessionId, issueNodeId, cwd)
   const mapping: IssueSession = {
     issueNodeId,
+    kind: row.kind,
     host: 'github.com',
     account: getAuthMeta().login ?? 'unknown',
     repo: row.repo,
@@ -329,7 +331,6 @@ async function ensureSession(issueNodeId: string, live: LiveSession): Promise<Is
   saveIssueSession(mapping)
   live.sessionId = sessionId
   issueBySessionId.set(sessionId, issueNodeId)
-  await applyInstructions(sessionId, row.repo)
   return mapping
 }
 
@@ -338,7 +339,7 @@ async function sessionCwd(mapping: IssueSession): Promise<string> {
   const config = repoConfig(mapping.repo)
   if (!config?.path) throw new Error(`Configure a local clone for ${mapping.repo} before asking Goose`)
   if (config.useWorktrees) {
-    const worktreePath = await ensureWorktree(config.path, mapping.issueNumber)
+    const worktreePath = await ensureWorktree(config.path, mapping.kind ?? 'issue', mapping.issueNumber)
     saveIssueSession({ ...mapping, worktreePath })
     return worktreePath
   }
@@ -346,19 +347,18 @@ async function sessionCwd(mapping: IssueSession): Promise<string> {
 }
 
 /**
- * Global + per-repo instructions, appended to the session's system prompt.
- * Not persisted by goose, so re-applied after every load. Older binaries
- * without the method just skip this; instructions then only exist in
- * whatever the user writes.
+ * Issue/PR instructions, appended to the session's system prompt.
+ * Not persisted by goose, so re-applied after every load and before every
+ * turn. Older binaries without the method just skip this.
  */
-async function applyInstructions(sessionId: string, repo: string): Promise<void> {
+async function applyInstructions(sessionId: string, kind: 'issue' | 'pullRequest'): Promise<void> {
   const s = settings().get()
-  const parts = [s.globalInstructions, repoConfig(repo)?.instructions].filter(
-    (p): p is string => !!p?.trim(),
-  )
-  if (parts.length === 0) return
   try {
-    await acp.setSystemPromptExtra(sessionId, 'top-goose-instructions', parts.join('\n\n'))
+    await acp.setSystemPromptExtra(
+      sessionId,
+      'top-goose-instructions',
+      sessionInstructions(s, kind),
+    )
   } catch (err) {
     console.warn('[goose] could not set instructions:', err)
   }

@@ -2,11 +2,13 @@ import { create } from 'zustand'
 import type {
   AuthState,
   CachedRow,
+  ConversationKind,
   GooseMessage,
   GooseStreamEvent,
   GooseToolCall,
   IssueDetail,
   PendingDraft,
+  PullRequestDetail,
   RateBudget,
 } from '../../shared/types'
 
@@ -31,28 +33,44 @@ type GooseChat = {
 }
 
 export type SidebarFilter = 'unread' | 'unreplied' | 'assigned'
+export type PullRequestFilter = 'reviewRequested' | 'assigned' | 'authored' | 'olderThan7Days' | 'unsolicited'
+export type PullRequestStateFilter = 'ready' | 'draft' | 'approved' | 'changesRequested' | 'reviewRequired'
 
 export type State = {
   auth: AuthState | null
   rows: CachedRow[]
+  conversationKind: ConversationKind
   /** active filters combine with AND; none active shows everything */
   sidebarFilters: SidebarFilter[]
   workflowStatusFilter: string | null
+  pullRequestFilters: PullRequestFilter[]
+  pullRequestStateFilter: PullRequestStateFilter | null
   selectedNodeId: string | null
   issue: IssueDetail | null
+  pullRequest: PullRequestDetail | null
   issueLoading: boolean
   issueError: string | null
   assigneeSaving: boolean
+  pullRequestLoading: boolean
+  pullRequestError: string | null
+  approvalSaving: boolean
+  closingPullRequest: boolean
   composers: Record<string, ComposerState>
   gooseChats: Record<string, GooseChat>
+  gooseInputs: Record<string, string>
   budget: RateBudget | null
   view: 'main' | 'settings'
   generation: number
 
   init: () => () => void
   selectIssue: (nodeId: string) => Promise<void>
+  selectPullRequest: (nodeId: string) => Promise<void>
   refreshIssue: () => Promise<void>
+  refreshPullRequest: () => Promise<void>
   reply: () => Promise<void>
+  replyToPullRequest: () => Promise<void>
+  approvePullRequest: () => Promise<void>
+  closePullRequest: () => Promise<void>
   setAssignee: (login: string | null) => Promise<void>
   setStatus: (status: string) => Promise<void>
   setSnooze: (date: string | null) => Promise<void>
@@ -60,11 +78,15 @@ export type State = {
   acceptOfferedDraft: (nodeId: string) => string | null
   discardOfferedDraft: (nodeId: string) => void
   promptGoose: (nodeId: string, text: string) => Promise<void>
+  setGooseInput: (nodeId: string, text: string) => void
   cancelGoose: (nodeId: string) => void
   setView: (view: 'main' | 'settings') => void
   setAuth: (auth: AuthState) => void
   toggleSidebarFilter: (filter: SidebarFilter) => void
   setWorkflowStatusFilter: (status: string | null) => void
+  setConversationKind: (kind: ConversationKind) => void
+  togglePullRequestFilter: (filter: PullRequestFilter) => void
+  setPullRequestStateFilter: (filter: PullRequestStateFilter | null) => void
 }
 
 const emptyComposer: ComposerState = { text: '', dirty: false, sending: false }
@@ -83,15 +105,24 @@ function sortRows(rows: CachedRow[]): CachedRow[] {
 export const useStore = create<State>((set, get) => ({
   auth: null,
   rows: [],
+  conversationKind: 'issue',
   sidebarFilters: [],
   workflowStatusFilter: null,
+  pullRequestFilters: [],
+  pullRequestStateFilter: null,
   selectedNodeId: null,
   issue: null,
+  pullRequest: null,
   issueLoading: false,
   issueError: null,
   assigneeSaving: false,
+  pullRequestLoading: false,
+  pullRequestError: null,
+  approvalSaving: false,
+  closingPullRequest: false,
   composers: {},
   gooseChats: {},
+  gooseInputs: {},
   budget: null,
   view: 'main',
   generation: 0,
@@ -113,12 +144,21 @@ export const useStore = create<State>((set, get) => ({
       api.on('push:reset', () =>
         set((state) => ({
           rows: [],
+          conversationKind: 'issue',
           workflowStatusFilter: null,
+          pullRequestFilters: [],
+          pullRequestStateFilter: null,
           selectedNodeId: null,
           issue: null,
+          pullRequest: null,
           assigneeSaving: false,
+          pullRequestLoading: false,
+          pullRequestError: null,
+          approvalSaving: false,
+          closingPullRequest: false,
           composers: {},
           gooseChats: {},
+          gooseInputs: {},
           generation: state.generation + 1,
         })),
       ),
@@ -147,6 +187,7 @@ export const useStore = create<State>((set, get) => ({
     set({
       selectedNodeId: nodeId,
       issue: null,
+      pullRequest: null,
       issueLoading: true,
       issueError: null,
       assigneeSaving: false,
@@ -217,12 +258,100 @@ export const useStore = create<State>((set, get) => ({
     if (pending && get().generation === generation) applyDraft(set, get, nodeId, pending.text)
   },
 
+  selectPullRequest: async (nodeId) => {
+    const generation = get().generation
+    set({
+      selectedNodeId: nodeId,
+      issue: null,
+      pullRequest: null,
+      pullRequestLoading: true,
+      pullRequestError: null,
+      approvalSaving: false,
+      closingPullRequest: false,
+      view: 'main',
+    })
+    void api.invoke('issue:markRead', nodeId)
+
+    const chats = get().gooseChats
+    if (!chats[nodeId]?.loaded || chats[nodeId]?.error) {
+      set({
+        gooseChats: {
+          ...chats,
+          [nodeId]: { messages: [], busy: false, noWorkspace: false, loaded: false },
+        },
+      })
+      void api
+        .invoke('session:open', nodeId)
+        .then((view) => {
+          set((state) =>
+            state.generation !== generation
+              ? state
+              : {
+                  gooseChats: {
+                    ...state.gooseChats,
+                    [nodeId]: {
+                      messages: view.messages,
+                      busy: view.busy,
+                      noWorkspace: view.noWorkspace,
+                      error: view.error,
+                      loaded: true,
+                    },
+                  },
+                },
+          )
+        })
+        .catch((err: Error) => {
+          set((state) =>
+            state.generation !== generation
+              ? state
+              : {
+                  gooseChats: {
+                    ...state.gooseChats,
+                    [nodeId]: {
+                      messages: [],
+                      busy: false,
+                      noWorkspace: false,
+                      error: err.message,
+                      loaded: false,
+                    },
+                  },
+                },
+          )
+        })
+    }
+
+    try {
+      const pullRequest = await api.invoke('pullRequest:open', nodeId)
+      if (get().generation === generation && get().selectedNodeId === nodeId) {
+        set({ pullRequest, pullRequestLoading: false })
+      }
+    } catch (err) {
+      if (get().generation === generation && get().selectedNodeId === nodeId) {
+        set({
+          pullRequestError: err instanceof Error ? err.message : String(err),
+          pullRequestLoading: false,
+        })
+      }
+    }
+
+    const pending = await api.invoke('draft:take', nodeId)
+    if (pending && get().generation === generation) applyDraft(set, get, nodeId, pending.text)
+  },
+
   refreshIssue: async () => {
     const nodeId = get().selectedNodeId
     const generation = get().generation
     if (!nodeId) return
     const issue = await api.invoke('issue:open', nodeId)
     if (get().generation === generation && get().selectedNodeId === nodeId) set({ issue })
+  },
+
+  refreshPullRequest: async () => {
+    const nodeId = get().selectedNodeId
+    const generation = get().generation
+    if (!nodeId) return
+    const pullRequest = await api.invoke('pullRequest:open', nodeId)
+    if (get().generation === generation && get().selectedNodeId === nodeId) set({ pullRequest })
   },
 
   reply: async () => {
@@ -245,7 +374,13 @@ export const useStore = create<State>((set, get) => ({
         state.generation !== generation
           ? state
           : {
-              composers: { ...state.composers, [selectedNodeId]: { ...emptyComposer } },
+              composers: {
+                ...state.composers,
+                [selectedNodeId]: {
+                  ...emptyComposer,
+                  offeredDraft: state.composers[selectedNodeId]?.offeredDraft,
+                },
+              },
               issue:
                 state.selectedNodeId === selectedNodeId && state.issue?.nodeId === selectedNodeId
                   ? { ...state.issue, comments: [...state.issue.comments, comment] }
@@ -267,6 +402,118 @@ export const useStore = create<State>((set, get) => ({
               },
             },
       )
+    }
+  },
+
+  replyToPullRequest: async () => {
+    const { selectedNodeId, composers, pullRequest } = get()
+    const generation = get().generation
+    if (!selectedNodeId || !pullRequest || pullRequest.nodeId !== selectedNodeId) return
+    const composer = composers[selectedNodeId] ?? emptyComposer
+    if (composer.sending) return
+    const body = composer.text.trim()
+    if (!body) return
+    set({
+      composers: {
+        ...composers,
+        [selectedNodeId]: { ...composer, sending: true, error: undefined },
+      },
+    })
+    try {
+      const comment = await api.invoke('pullRequest:reply', selectedNodeId, body)
+      set((state) =>
+        state.generation !== generation
+          ? state
+          : {
+              composers: {
+                ...state.composers,
+                [selectedNodeId]: {
+                  ...emptyComposer,
+                  offeredDraft: state.composers[selectedNodeId]?.offeredDraft,
+                },
+              },
+              pullRequest:
+                state.selectedNodeId === selectedNodeId && state.pullRequest?.nodeId === selectedNodeId
+                  ? { ...state.pullRequest, comments: [...state.pullRequest.comments, comment] }
+                  : state.pullRequest,
+            },
+      )
+    } catch (err) {
+      set((state) =>
+        state.generation !== generation
+          ? state
+          : {
+              composers: {
+                ...state.composers,
+                [selectedNodeId]: {
+                  ...(state.composers[selectedNodeId] ?? composer),
+                  sending: false,
+                  error: err instanceof Error ? err.message : String(err),
+                },
+              },
+            },
+      )
+    }
+  },
+
+  approvePullRequest: async () => {
+    const { selectedNodeId, pullRequest, approvalSaving, closingPullRequest } = get()
+    const generation = get().generation
+    if (
+      !selectedNodeId ||
+      !pullRequest ||
+      pullRequest.nodeId !== selectedNodeId ||
+      approvalSaving ||
+      closingPullRequest
+    ) {
+      return
+    }
+    set({ approvalSaving: true, pullRequestError: null })
+    try {
+      const next = await api.invoke('pullRequest:approve', selectedNodeId)
+      if (get().generation === generation && get().selectedNodeId === selectedNodeId) {
+        set({ pullRequest: next, approvalSaving: false })
+      }
+    } catch (err) {
+      if (get().generation === generation && get().selectedNodeId === selectedNodeId) {
+        set({
+          approvalSaving: false,
+          pullRequestError: err instanceof Error ? err.message : String(err),
+        })
+      }
+    }
+  },
+
+  closePullRequest: async () => {
+    const { selectedNodeId, pullRequest, approvalSaving, closingPullRequest } = get()
+    const generation = get().generation
+    if (
+      !selectedNodeId ||
+      !pullRequest ||
+      pullRequest.nodeId !== selectedNodeId ||
+      pullRequest.state !== 'open' ||
+      approvalSaving ||
+      closingPullRequest
+    ) {
+      return
+    }
+    set({ closingPullRequest: true, pullRequestError: null })
+    try {
+      await api.invoke('pullRequest:close', selectedNodeId)
+      if (get().generation === generation && get().selectedNodeId === selectedNodeId) {
+        set((state) => ({
+          pullRequest: state.pullRequest ? { ...state.pullRequest, state: 'closed' } : null,
+          rows: state.rows.filter((row) => row.nodeId !== selectedNodeId),
+          closingPullRequest: false,
+        }))
+      }
+    } catch (err) {
+      if (get().generation === generation && get().selectedNodeId === selectedNodeId) {
+        set({
+          closingPullRequest: false,
+          pullRequestError: err instanceof Error ? err.message : String(err),
+        })
+      }
     }
   },
 
@@ -394,6 +641,10 @@ export const useStore = create<State>((set, get) => ({
     }
   },
 
+  setGooseInput: (nodeId, text) => {
+    set((state) => ({ gooseInputs: { ...state.gooseInputs, [nodeId]: text } }))
+  },
+
   cancelGoose: (nodeId) => {
     void api.invoke('session:cancel', nodeId)
   },
@@ -406,12 +657,21 @@ export const useStore = create<State>((set, get) => ({
       return {
         auth,
         rows: [],
+        conversationKind: 'issue',
         workflowStatusFilter: null,
+        pullRequestFilters: [],
+        pullRequestStateFilter: null,
         selectedNodeId: null,
         issue: null,
+        pullRequest: null,
         assigneeSaving: false,
+        pullRequestLoading: false,
+        pullRequestError: null,
+        approvalSaving: false,
+        closingPullRequest: false,
         composers: {},
         gooseChats: {},
+        gooseInputs: {},
         generation: state.generation + 1,
       }
     }),
@@ -422,6 +682,26 @@ export const useStore = create<State>((set, get) => ({
         : [...s.sidebarFilters, filter],
     })),
   setWorkflowStatusFilter: (workflowStatusFilter) => set({ workflowStatusFilter }),
+  setConversationKind: (conversationKind) => {
+    if (get().conversationKind === conversationKind) return
+    set({
+      conversationKind,
+      selectedNodeId: null,
+      issue: null,
+      pullRequest: null,
+      issueLoading: false,
+      pullRequestLoading: false,
+      issueError: null,
+      pullRequestError: null,
+    })
+  },
+  togglePullRequestFilter: (filter) =>
+    set((state) => ({
+      pullRequestFilters: state.pullRequestFilters.includes(filter)
+        ? state.pullRequestFilters.filter((value) => value !== filter)
+        : [...state.pullRequestFilters, filter],
+    })),
+  setPullRequestStateFilter: (pullRequestStateFilter) => set({ pullRequestStateFilter }),
 }))
 
 function applyDraft(

@@ -39,17 +39,38 @@ export function SettingsView(): React.JSX.Element {
         <AuthSection />
         <GooseSection settings={settings} onSettings={setSettings} />
         <div>
-          <h2 className="mb-2 text-sm font-semibold">Global instructions</h2>
-          <p className="mb-2 text-xs text-gray-500">
-            Appended to the system prompt of every Goose session.
+          <h2 className="mb-2 text-sm font-semibold">Instructions</h2>
+          <p className="mb-3 text-xs text-gray-500">
+            Automatically appended to Goose's system prompt for the matching conversation type.
           </p>
-          <textarea
-            className="h-20 w-full rounded border border-gray-300 p-2 text-sm"
-            defaultValue={settings.globalInstructions ?? ''}
-            onBlur={(e) =>
-              void api.invoke('settings:update', { globalInstructions: e.target.value }).then(setSettings)
-            }
-          />
+          <div className="grid grid-cols-2 gap-3">
+            <label className="text-xs font-medium text-gray-700">
+              Issues
+              <textarea
+                className="mt-1 h-28 w-full rounded border border-gray-300 p-2 text-sm font-normal"
+                placeholder="Instructions for issue triage and implementation…"
+                defaultValue={settings.issueInstructions ?? ''}
+                onBlur={(e) =>
+                  void api
+                    .invoke('settings:update', { issueInstructions: e.target.value || undefined })
+                    .then(setSettings)
+                }
+              />
+            </label>
+            <label className="text-xs font-medium text-gray-700">
+              Pull requests
+              <textarea
+                className="mt-1 h-28 w-full rounded border border-gray-300 p-2 text-sm font-normal"
+                placeholder="Instructions for PR review and follow-up…"
+                defaultValue={settings.pullRequestInstructions ?? ''}
+                onBlur={(e) =>
+                  void api
+                    .invoke('settings:update', { pullRequestInstructions: e.target.value || undefined })
+                    .then(setSettings)
+                }
+              />
+            </label>
+          </div>
         </div>
         <RepoSection settings={settings} onSettings={setSettings} />
         <div className="flex items-center gap-4 border-t border-gray-200 pt-4">
@@ -299,12 +320,6 @@ function RepoCard({
           Browse…
         </button>
       </div>
-      <textarea
-        className="mt-2 h-14 w-full rounded border border-gray-300 px-2 py-1 text-xs"
-        placeholder="Repo-specific instructions for Goose (how to run tests, conventions…)"
-        defaultValue={config.instructions ?? ''}
-        onBlur={(e) => save({ instructions: e.target.value || undefined })}
-      />
       <BoardPicker config={config} onSave={save} />
     </div>
   )

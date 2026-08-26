@@ -1,12 +1,12 @@
 # Top Goose
 
-GitHub issues as chat conversations, with a private [Goose](https://github.com/block/goose) side-channel attached to every issue.
+GitHub issues and pull requests as conversations, with a private [Goose](https://github.com/block/goose) side-channel attached to each one.
 
 Issue triage usually means a browser tab per issue and no help from your agent. Top Goose turns a repository's issues into something closer to Slack:
 
-- **Left — channels:** every open issue in the repository, sorted by activity, with unread counts, board status, filter pills (`unread` / `unreplied` / `assigned`), and a board-status dropdown.
-- **Center — the conversation:** the GitHub discussion, a reply composer, and in-place editing of the Projects V2 `Status` and snooze date.
-- **Right — the goose:** a private Goose conversation scoped to the current issue, running against your local clone. Nothing there touches GitHub unless *you* press send: when Goose drafts a reply it lands in your composer for review, never on the issue.
+- **Left — channels:** switch between every open issue and every open pull request. Each view has filters suited to it, including PRs older than seven days and unsolicited ready PRs from outside the core team. Repository-wide GitHub search also finds closed issues and PRs outside the current list.
+- **Center — the conversation:** issue discussion and triage controls, or PR metadata, checks, review summaries, inline review threads, general comments, and direct Approve and Close actions.
+- **Right — the goose:** a persistent private Goose conversation scoped to the selected issue or PR, running against your local clone. Goose receives the full public discussion as context and can use `gh` when asked. Enter sends a prompt and Shift-Enter inserts a newline; Codex review findings can be copied into the prompt with one click.
 
 See [DESIGN.md](DESIGN.md) for the full design.
 
@@ -46,21 +46,21 @@ Top Goose auto-discovers goose (Goose Desktop bundle, Homebrew, `~/.local/bin`, 
 
 ### 3. Choose the repository's local clone
 
-Browse to your local clone; the GitHub repository is derived from its `origin` remote, and the sidebar scopes itself to that repository. The clone is what gives Goose code access. Leave **worktrees** on unless the sessions are strictly read-only: each issue's session then runs in its own git worktree (`<clone>-worktrees/issue-N`, branch `top-goose/issue-N`) so parallel sessions can't trample each other or your checkout.
+Browse to your local clone; the GitHub repository is derived from its `origin` remote, and the sidebar scopes itself to that repository. The clone is what gives Goose code access. Leave **worktrees** on unless the sessions are strictly read-only: each session then runs in its own `issue-N` or `pr-N` worktree so parallel sessions can't trample each other or your checkout. Opening a PR never checks out or runs contributor code; Goose can check it out deliberately when asked.
 
-Optionally pick a Projects V2 board plus its `Status` and snooze (date) fields — that lights up the status dropdown in the issue header, the status tags in the sidebar, and snoozing (snoozed issues sink to the bottom until their date passes). Per-repo instructions typed here are appended to every Goose session's system prompt.
+Optionally pick a Projects V2 board plus its `Status` and snooze (date) fields — that lights up the status dropdown in the issue header, the status tags in the sidebar, and snoozing (snoozed issues sink to the bottom until their date passes). Settings also has separate instruction fields for issue and pull request sessions; Top Goose appends the matching text to Goose's system prompt automatically.
 
 ## How it talks to GitHub
 
 - Change detection polls `/notifications` with `If-None-Match`; an idle repository costs zero rate limit.
-- Reconciliation fetches every open issue in the configured repository every 5 minutes to establish the sidebar set.
-- Hydration is one batched GraphQL query over only the issues that changed. Every query carries `rateLimit { cost remaining }`; below a floor of remaining points the app degrades to cached rows instead of querying.
+- Reconciliation fetches only the IDs and update timestamps of every open issue and pull request every 5 minutes to establish both sidebar sets.
+- Hydration uses batched GraphQL queries over only the conversations that changed. Every query carries `rateLimit { cost remaining }`; below a floor of remaining points the app degrades to cached rows instead of querying.
 
 ## How it talks to Goose
 
-One long-lived `goose acp` child process (newline-delimited JSON-RPC over stdio) multiplexes all sessions: one persistent session per issue and GitHub account, resumed across restarts via `session/load`. GitHub context is injected as untrusted JSON data per turn, with hashes detecting edits and deletions that require a full snapshot. Sessions run in `GOOSE_MODE=auto`; permission requests are approved automatically and tool calls are displayed after the fact. Worktrees isolate concurrent Git state; they are not a security sandbox.
+One long-lived `goose acp` child process (newline-delimited JSON-RPC over stdio) multiplexes all sessions: one persistent session per issue or PR and GitHub account, resumed across restarts via `session/load`. Selecting another conversation does not cancel a running turn; a pulsing goose on its sidebar row shows that it is still working. GitHub context is injected as untrusted JSON data per turn. PR context includes general comments, review summaries, and inline review threads. Sessions run in `GOOSE_MODE=auto`; permission requests are approved automatically and tool calls are displayed after the fact. Top Goose also instructs Goose to finish work in the current turn instead of promising to continue after it has stopped. Worktrees isolate concurrent Git state; they are not a security sandbox.
 
-The `draft_reply` tool Goose uses is served by an MCP endpoint inside the Electron main process (127.0.0.1, random port, per-launch token, per-issue session paths). It is attached to sessions via `_goose/unstable/session/extensions/add` after a bare create/load — passing `mcpServers` inline replaces the session's whole extension list on goose ≤ 1.47 ([goose#11339](https://github.com/block/goose/pull/11339)), which would strip the developer extension. Drafts land in the reply composer: replacing it when it's untouched, offered as *Insert / Discard* when you've typed, and queued on the issue's sidebar row when the issue isn't open.
+The `draft_reply` tool Goose uses is served by an MCP endpoint inside the Electron main process (127.0.0.1, random port, per-launch token, per-conversation session paths). It is attached to sessions via `_goose/unstable/session/extensions/add` after a bare create/load — passing `mcpServers` inline replaces the session's whole extension list on goose ≤ 1.47 ([goose#11339](https://github.com/block/goose/pull/11339)), which would strip the developer extension. Drafts land in the selected conversation's reply composer for review.
 
 ## Development
 

@@ -4,6 +4,7 @@ import { extractBoardFields } from './github/projects'
 import {
   clearCachedRows,
   clearPendingDrafts,
+  clearSearchedRows,
   getCachedRow,
   getCachedRows,
   hasPendingDraft,
@@ -37,11 +38,13 @@ let rowsListener: RowsListener | null = null
 let notifTimer: NodeJS.Timeout | null = null
 let reconcileTimer: NodeJS.Timeout | null = null
 let notifEtag: string | undefined
+let generation = 0
 
 /** notification thread IDs by issue node ID, for mark-as-read */
 const threadByNode = new Map<string, string>()
-/** issues discovered by notifications before we know their node ID */
-type IssueRef = { repo: string; number: number }
+const notificationUpdatedAt = new Map<string, string>()
+type ConversationRef = { kind: 'issue' | 'pullRequest'; repo: string; number: number }
+type DiscoveredConversation = ConversationRef & { nodeId: string; updatedAt: string }
 
 export function onRows(listener: RowsListener): void {
   rowsListener = listener
@@ -58,15 +61,17 @@ export function currentRows(): CachedRow[] {
 
 export function start(): void {
   stop()
-  void reconcile().catch((err) => console.warn('[reconcile] failed:', err))
+  const currentGeneration = generation
+  void reconcile(currentGeneration).catch((err) => console.warn('[reconcile] failed:', err))
   reconcileTimer = setInterval(() => {
-    void reconcile().catch((err) => console.warn('[reconcile] failed:', err))
+    void reconcile(currentGeneration).catch((err) => console.warn('[reconcile] failed:', err))
   }, RECONCILE_INTERVAL_MS)
-  void pollLoop()
+  void pollLoop(currentGeneration)
   emitRows()
 }
 
 export function stop(): void {
+  generation++
   if (notifTimer) clearTimeout(notifTimer)
   if (reconcileTimer) clearInterval(reconcileTimer)
   notifTimer = null
@@ -77,17 +82,20 @@ export function reset(): void {
   stop()
   notifEtag = undefined
   threadByNode.clear()
+  notificationUpdatedAt.clear()
   pendingThreadIds.clear()
   hasProjectScope = true
   clearCachedRows()
+  clearSearchedRows()
   clearPendingDrafts()
   emitRows()
 }
 
 export async function refreshNow(): Promise<void> {
+  const currentGeneration = generation
   notifEtag = undefined
-  await reconcile()
-  await pollNotificationsOnce()
+  await reconcile(currentGeneration, true)
+  if (currentGeneration === generation) await pollNotificationsOnce(currentGeneration)
 }
 
 // ---------- Change detection: REST notifications ----------
@@ -100,45 +108,52 @@ type RestNotification = {
   repository: { full_name: string }
 }
 
-async function pollLoop(): Promise<void> {
+async function pollLoop(currentGeneration: number): Promise<void> {
   let interval = DEFAULT_POLL_INTERVAL_S
   try {
-    interval = (await pollNotificationsOnce()) ?? interval
+    interval = (await pollNotificationsOnce(currentGeneration)) ?? interval
   } catch (err) {
     console.warn('[notifications] poll failed:', err)
   }
-  notifTimer = setTimeout(() => void pollLoop(), interval * 1000)
+  if (currentGeneration !== generation) return
+  notifTimer = setTimeout(() => void pollLoop(currentGeneration), interval * 1000)
 }
 
 /** Returns the server-requested poll interval, if any. */
-async function pollNotificationsOnce(): Promise<number | undefined> {
+async function pollNotificationsOnce(currentGeneration: number): Promise<number | undefined> {
   const res = await restGet<RestNotification[]>('/notifications?per_page=50', notifEtag)
+  if (currentGeneration !== generation) return res.pollInterval
   if (res.status === 304) return res.pollInterval
   notifEtag = res.etag
-  const changed: IssueRef[] = []
+  const changed: { ref: ConversationRef; threadId: string; updatedAt: string }[] = []
   const configured = settingsRepo()
   if (!configured) return res.pollInterval
   for (const n of res.data ?? []) {
-    // pull requests are not channels; filter their notifications out
-    if (n.subject.type !== 'Issue' || !n.subject.url) continue
+    if (!n.subject.url || (n.subject.type !== 'Issue' && n.subject.type !== 'PullRequest')) continue
     // the app is scoped to the one configured repository
     if (n.repository.full_name.toLowerCase() !== configured) continue
-    const match = n.subject.url.match(/\/issues\/(\d+)$/)
+    const kind = n.subject.type === 'PullRequest' ? 'pullRequest' : 'issue'
+    const match = n.subject.url.match(kind === 'pullRequest' ? /\/pulls\/(\d+)$/ : /\/issues\/(\d+)$/)
     if (!match) continue
-    const ref: IssueRef = { repo: n.repository.full_name, number: parseInt(match[1], 10) }
+    const ref: ConversationRef = { kind, repo: n.repository.full_name, number: parseInt(match[1], 10) }
     const cached = findCachedByRef(ref)
     if (cached) {
       threadByNode.set(cached.nodeId, n.id)
       if (n.unread && !cached.unread) updateCachedRow(cached.nodeId, { unread: true })
     }
-    // hand-rolled conditional request: hydrate only if GitHub is newer than cache
-    if (!cached || n.updated_at > cached.updatedAt) {
-      changed.push(ref)
+    if (!cached || notificationUpdatedAt.get(n.id) !== n.updated_at) {
+      changed.push({ ref, threadId: n.id, updatedAt: n.updated_at })
       pendingThreadIds.set(refKey(ref), n.id)
     }
   }
   if (changed.length > 0) {
-    await hydrate(changed)
+    const hydrated = await hydrate(changed.map(({ ref }) => ref), currentGeneration)
+    if (currentGeneration !== generation) return res.pollInterval
+    if (hydrated) {
+      for (const notification of changed) {
+        notificationUpdatedAt.set(notification.threadId, notification.updatedAt)
+      }
+    }
     emitRows()
   }
   return res.pollInterval
@@ -146,12 +161,14 @@ async function pollNotificationsOnce(): Promise<number | undefined> {
 
 const pendingThreadIds = new Map<string, string>()
 
-function refKey(ref: IssueRef): string {
-  return `${ref.repo.toLowerCase()}#${ref.number}`
+function refKey(ref: ConversationRef): string {
+  return `${ref.kind}:${ref.repo.toLowerCase()}#${ref.number}`
 }
 
-function findCachedByRef(ref: IssueRef): CachedRow | undefined {
-  return getCachedRows().find((r) => r.repo.toLowerCase() === ref.repo.toLowerCase() && r.issueNumber === ref.number)
+function findCachedByRef(ref: ConversationRef): CachedRow | undefined {
+  return getCachedRows().find(
+    (row) => row.kind === ref.kind && row.repo.toLowerCase() === ref.repo.toLowerCase() && row.issueNumber === ref.number,
+  )
 }
 
 // ---------- Row fragment shared by search and hydration ----------
@@ -164,7 +181,25 @@ function findCachedByRef(ref: IssueRef): CachedRow | undefined {
 let hasProjectScope = true
 
 function rowFragment(): string {
-  const projectItems = hasProjectScope
+  return `
+fragment RowFields on Issue {
+  id
+  number
+  title
+  author { login }
+  assignees(first: 10) { nodes { login } }
+  state
+  updatedAt
+  repository { nameWithOwner }
+  comments(last: 1) {
+    totalCount
+    nodes { author { login } body }
+  }${projectItemsSelection()}
+}`
+}
+
+function projectItemsSelection(): string {
+  return hasProjectScope
     ? `
   projectItems(first: 10) {
     nodes {
@@ -179,33 +214,22 @@ function rowFragment(): string {
     }
   }`
     : ''
-  return `
-fragment RowFields on Issue {
-  id
-  number
-  title
-  author { login }
-  assignees(first: 10) { nodes { login } }
-  state
-  updatedAt
-  repository { nameWithOwner }
-  comments(last: 1) {
-    totalCount
-    nodes { author { login } body }
-  }${projectItems}
-}`
 }
 
-/** Run a RowFields query, downgrading to the no-projects fragment on a scope error. */
-async function rowQuery<T>(build: (fragment: string) => string, vars: Record<string, unknown>): Promise<T> {
+async function projectAwareQuery<T>(build: () => string, vars: Record<string, unknown>): Promise<T> {
   try {
-    return await graphql<T>(build(rowFragment()), vars)
+    return await graphql<T>(build(), vars)
   } catch (err) {
     if (!hasProjectScope || !isProjectScopeError(err)) throw err
     hasProjectScope = false
     console.warn('[graphql] token lacks read:project; continuing without board fields')
-    return await graphql<T>(build(rowFragment()), vars)
+    return await graphql<T>(build(), vars)
   }
+}
+
+/** Run a RowFields query, downgrading to the no-projects fragment on a scope error. */
+async function rowQuery<T>(build: (fragment: string) => string, vars: Record<string, unknown>): Promise<T> {
+  return await projectAwareQuery(() => build(rowFragment()), vars)
 }
 
 type GqlIssueRow = {
@@ -227,22 +251,78 @@ type GqlIssueRow = {
   } | null
 }
 
-function toRow(issue: GqlIssueRow): CachedRow {
-  const repo = issue.repository.nameWithOwner
-  const config = repoConfig(repo)
-  let workflowStatus: string | undefined
-  let snoozedUntil: string | undefined
-  if (config?.board && issue.projectItems) {
-    const item = issue.projectItems.nodes.find((n) => n.project.id === config.board!.projectId)
-    if (item) {
-      const fields = extractBoardFields(config.board, item.fieldValues.nodes)
-      workflowStatus = fields.status
-      snoozedUntil = fields.snoozedUntil
+type GqlPullRequestRow = {
+  id: string
+  number: number
+  title: string
+  author: { login: string } | null
+  assignees: { nodes: { login: string }[] }
+  state: string
+  createdAt: string
+  updatedAt: string
+  isDraft: boolean
+  reviewDecision: CachedRow['reviewDecision'] | null
+  reviewRequests: {
+    nodes: { requestedReviewer: { login?: string; slug?: string; name?: string } | null }[]
+  }
+  repository: { nameWithOwner: string }
+  comments: { totalCount: number; nodes: { author: { login: string } | null; body: string }[] }
+  closingIssuesReferences: {
+    nodes: { number: number; projectItems?: GqlIssueRow['projectItems'] }[]
+  }
+}
+
+function pullRequestRowFragment(): string {
+  return `
+fragment PullRequestRowFields on PullRequest {
+  id
+  number
+  title
+  author { login }
+  assignees(first: 10) { nodes { login } }
+  state
+  createdAt
+  updatedAt
+  isDraft
+  reviewDecision
+  reviewRequests(first: 100) {
+    nodes {
+      requestedReviewer {
+        ... on User { login }
+        ... on Team { name slug }
+      }
     }
   }
+  repository { nameWithOwner }
+  comments(last: 1) {
+    totalCount
+    nodes { author { login } body }
+  }
+  closingIssuesReferences(first: 10) {
+    nodes {
+      number${projectItemsSelection()}
+    }
+  }
+}`
+}
+
+function boardFields(
+  repo: string,
+  projectItems: GqlIssueRow['projectItems'],
+): { status?: string; snoozedUntil?: string } {
+  const config = repoConfig(repo)
+  if (!config?.board || !projectItems) return {}
+  const item = projectItems.nodes.find((node) => node.project.id === config.board!.projectId)
+  return item ? extractBoardFields(config.board, item.fieldValues.nodes) : {}
+}
+
+function toRow(issue: GqlIssueRow): CachedRow {
+  const repo = issue.repository.nameWithOwner
+  const fields = boardFields(repo, issue.projectItems)
   const last = issue.comments.nodes[0]
   const existing = getCachedRow(issue.id)
   return {
+    kind: 'issue',
     repo,
     issueNumber: issue.number,
     nodeId: issue.id,
@@ -250,8 +330,8 @@ function toRow(issue: GqlIssueRow): CachedRow {
     author: issue.author?.login ?? 'ghost',
     assignees: issue.assignees.nodes.map((a) => a.login),
     state: issue.state.toLowerCase(),
-    workflowStatus,
-    snoozedUntil,
+    workflowStatus: fields.status,
+    snoozedUntil: fields.snoozedUntil,
     lastComment: last
       ? { author: last.author?.login ?? 'ghost', snippet: last.body.replace(/\s+/g, ' ').slice(0, 120) }
       : undefined,
@@ -263,100 +343,230 @@ function toRow(issue: GqlIssueRow): CachedRow {
   }
 }
 
+function toPullRequestRow(pullRequest: GqlPullRequestRow): CachedRow {
+  const last = pullRequest.comments.nodes[0]
+  const existing = getCachedRow(pullRequest.id)
+  const repo = pullRequest.repository.nameWithOwner
+  return {
+    kind: 'pullRequest',
+    repo,
+    issueNumber: pullRequest.number,
+    nodeId: pullRequest.id,
+    title: pullRequest.title,
+    author: pullRequest.author?.login ?? 'ghost',
+    assignees: pullRequest.assignees.nodes.map((assignee) => assignee.login),
+    state: pullRequest.state.toLowerCase(),
+    createdAt: pullRequest.createdAt,
+    isDraft: pullRequest.isDraft,
+    linkedIssues: pullRequest.closingIssuesReferences.nodes.map((issue) => ({
+      number: issue.number,
+      workflowStatus: boardFields(repo, issue.projectItems).status,
+    })),
+    reviewDecision: pullRequest.reviewDecision ?? undefined,
+    reviewRequestedFrom: pullRequest.reviewRequests.nodes.flatMap(({ requestedReviewer }) => {
+      if (!requestedReviewer) return []
+      return [requestedReviewer.login ?? requestedReviewer.slug ?? requestedReviewer.name ?? 'unknown']
+    }),
+    lastComment: last
+      ? { author: last.author?.login ?? 'ghost', snippet: last.body.replace(/\s+/g, ' ').slice(0, 120) }
+      : undefined,
+    commentCount: pullRequest.comments.totalCount,
+    commentCountAtRead: existing?.commentCountAtRead,
+    updatedAt: pullRequest.updatedAt,
+    hydratedAt: new Date().toISOString(),
+    unread: existing?.unread,
+  }
+}
+
 // ---------- Hydration: batched GraphQL over deltas only ----------
 
-async function hydrate(refs: IssueRef[]): Promise<void> {
-  if (refs.length === 0) return
+async function hydrate(refs: ConversationRef[], currentGeneration: number): Promise<boolean> {
+  if (refs.length === 0) return true
+  if (currentGeneration !== generation) return false
   if (budgetDegraded()) {
     console.warn('[hydrate] budget degraded; serving cached rows only')
-    return
+    return false
   }
-  // Batched by aliased repository(...) { issue(...) } selections; notification
-  // subjects do not carry node IDs, so this addresses by repo+number.
-  const batch = refs.slice(0, 50)
-  const vars: Record<string, unknown> = {}
-  const selections = batch
-    .map((ref, i) => {
-      const [owner, name] = ref.repo.split('/')
-      vars[`o${i}`] = owner
-      vars[`n${i}`] = name
-      vars[`i${i}`] = ref.number
-      return `x${i}: repository(owner: $o${i}, name: $n${i}) { issue(number: $i${i}) { ...RowFields } }`
-    })
-    .join('\n')
-  const varDefs = batch.map((_, i) => `$o${i}: String!, $n${i}: String!, $i${i}: Int!`).join(', ')
-  const data = await rowQuery<Record<string, { issue: GqlIssueRow | null } | null>>(
-    (fragment) => `query (${varDefs}) { ${selections} } ${fragment}`,
-    vars,
-  )
-  const rows: CachedRow[] = []
-  for (let i = 0; i < batch.length; i++) {
-    const issue = data[`x${i}`]?.issue
-    if (!issue) continue
-    if (issue.state !== 'OPEN') {
-      threadByNode.delete(issue.id)
-      pendingThreadIds.delete(refKey(batch[i]))
-      removeCachedRow(issue.id)
-      continue
+  await hydrateIssues(refs.filter((ref) => ref.kind === 'issue'), currentGeneration)
+  await hydratePullRequests(refs.filter((ref) => ref.kind === 'pullRequest'), currentGeneration)
+  return currentGeneration === generation
+}
+
+async function hydrateIssues(refs: ConversationRef[], currentGeneration: number): Promise<void> {
+  for (let offset = 0; offset < refs.length; offset += 50) {
+    const batch = refs.slice(offset, offset + 50)
+    const vars: Record<string, unknown> = {}
+    const selections = batch
+      .map((ref, i) => {
+        const [owner, name] = ref.repo.split('/')
+        vars[`o${i}`] = owner
+        vars[`n${i}`] = name
+        vars[`i${i}`] = ref.number
+        return `x${i}: repository(owner: $o${i}, name: $n${i}) { issue(number: $i${i}) { ...RowFields } }`
+      })
+      .join('\n')
+    const varDefs = batch.map((_, i) => `$o${i}: String!, $n${i}: String!, $i${i}: Int!`).join(', ')
+    const data = await rowQuery<Record<string, { issue: GqlIssueRow | null } | null>>(
+      (fragment) => `query (${varDefs}) { ${selections} } ${fragment}`,
+      vars,
+    )
+    if (currentGeneration !== generation) return
+    const rows: CachedRow[] = []
+    for (let i = 0; i < batch.length; i++) {
+      const issue = data[`x${i}`]?.issue
+      if (!issue) continue
+      if (issue.state !== 'OPEN') {
+        threadByNode.delete(issue.id)
+        pendingThreadIds.delete(refKey(batch[i]))
+        removeCachedRow(issue.id)
+        continue
+      }
+      const row = toRow(issue)
+      const threadId = pendingThreadIds.get(refKey(batch[i]))
+      if (threadId) {
+        threadByNode.set(row.nodeId, threadId)
+        pendingThreadIds.delete(refKey(batch[i]))
+        row.unread = true
+      }
+      rows.push(row)
     }
-    const row = toRow(issue)
-    const threadId = pendingThreadIds.get(refKey(batch[i]))
-    if (threadId) {
-      threadByNode.set(row.nodeId, threadId)
-      pendingThreadIds.delete(refKey(batch[i]))
-      row.unread = true
-    }
-    rows.push(row)
+    putCachedRows(rows)
   }
-  putCachedRows(rows)
+}
+
+async function hydratePullRequests(refs: ConversationRef[], currentGeneration: number): Promise<void> {
+  for (let offset = 0; offset < refs.length; offset += 50) {
+    const batch = refs.slice(offset, offset + 50)
+    const vars: Record<string, unknown> = {}
+    const selections = batch
+      .map((ref, i) => {
+        const [owner, name] = ref.repo.split('/')
+        vars[`o${i}`] = owner
+        vars[`n${i}`] = name
+        vars[`i${i}`] = ref.number
+        return `x${i}: repository(owner: $o${i}, name: $n${i}) { pullRequest(number: $i${i}) { ...PullRequestRowFields } }`
+      })
+      .join('\n')
+    const varDefs = batch.map((_, i) => `$o${i}: String!, $n${i}: String!, $i${i}: Int!`).join(', ')
+    const data = await projectAwareQuery<Record<string, { pullRequest: GqlPullRequestRow | null } | null>>(
+      () => `query (${varDefs}) { ${selections} } ${pullRequestRowFragment()}`,
+      vars,
+    )
+    if (currentGeneration !== generation) return
+    const rows: CachedRow[] = []
+    for (let i = 0; i < batch.length; i++) {
+      const pullRequest = data[`x${i}`]?.pullRequest
+      if (!pullRequest) continue
+      if (pullRequest.state !== 'OPEN') {
+        threadByNode.delete(pullRequest.id)
+        pendingThreadIds.delete(refKey(batch[i]))
+        removeCachedRow(pullRequest.id)
+        continue
+      }
+      const row = toPullRequestRow(pullRequest)
+      const threadId = pendingThreadIds.get(refKey(batch[i]))
+      if (threadId) {
+        threadByNode.set(row.nodeId, threadId)
+        pendingThreadIds.delete(refKey(batch[i]))
+        row.unread = true
+      }
+      rows.push(row)
+    }
+    putCachedRows(rows)
+  }
 }
 
 // ---------- Reconciliation: the complete desired set, on a slow timer ----------
 
-async function reconcile(): Promise<void> {
-  type SearchResult = {
-    search: {
-      nodes: (GqlIssueRow | Record<string, never>)[]
-      pageInfo: { hasNextPage: boolean; endCursor: string | null }
-    }
-  }
+async function reconcile(currentGeneration: number, forceHydration = false): Promise<void> {
+  if (currentGeneration !== generation) return
   const configured = settingsRepo()
   if (!configured) {
     clearCachedRows()
     emitRows()
     return
   }
+  const issues = await reconcileIssues(configured)
+  if (!issues || currentGeneration !== generation) return
+  const pullRequests = await reconcilePullRequests(configured)
+  if (!pullRequests || currentGeneration !== generation) return
+  const discovered = [...issues, ...pullRequests]
+  const keep = new Set(discovered.map((conversation) => conversation.nodeId))
+  const changed = discovered.filter((conversation) => {
+    const cached = getCachedRow(conversation.nodeId)
+    return (
+      forceHydration ||
+      !cached ||
+      cached.updatedAt !== conversation.updatedAt ||
+      (conversation.kind === 'pullRequest' && !('linkedIssues' in cached))
+    )
+  })
+  await hydrate(changed, currentGeneration)
+  if (currentGeneration !== generation) return
+  pruneCachedRows(keep)
+  emitRows()
+}
+
+async function reconcileIssues(configured: string): Promise<DiscoveredConversation[] | null> {
+  type SearchResult = {
+    search: {
+      nodes: ({ id: string; number: number; updatedAt: string } | Record<string, never>)[]
+      pageInfo: { hasNextPage: boolean; endCursor: string | null }
+    }
+  }
   const query = `is:issue repo:${configured} state:open sort:updated-desc`
-  const rows: CachedRow[] = []
-  const keep = new Set<string>()
+  const conversations: DiscoveredConversation[] = []
   let after: string | null = null
   for (;;) {
-    const data: SearchResult = await rowQuery<SearchResult>(
-      (fragment) => `query ($q: String!, $after: String) {
+    const data: SearchResult = await graphql<SearchResult>(
+      `query ($q: String!, $after: String) {
         search(query: $q, type: ISSUE, first: 100, after: $after) {
-          nodes { ...RowFields }
+          nodes { ... on Issue { id number updatedAt } }
           pageInfo { hasNextPage endCursor }
         }
-      } ${fragment}`,
+      }`,
       { q: query, after },
     )
     for (const node of data.search.nodes) {
       if (!('id' in node)) continue
-      const row = toRow(node as GqlIssueRow)
-      keep.add(row.nodeId)
-      rows.push(row)
+      conversations.push({ kind: 'issue', repo: configured, number: node.number, nodeId: node.id, updatedAt: node.updatedAt })
     }
     if (!data.search.pageInfo.hasNextPage) break
-    if (budgetDegraded()) {
-      putCachedRows(rows)
-      emitRows()
-      return
-    }
+    if (budgetDegraded()) return null
     after = data.search.pageInfo.endCursor
   }
-  putCachedRows(rows)
-  pruneCachedRows(keep)
-  emitRows()
+  return conversations
+}
+
+async function reconcilePullRequests(configured: string): Promise<DiscoveredConversation[] | null> {
+  type SearchResult = {
+    search: {
+      nodes: ({ id: string; number: number; updatedAt: string } | Record<string, never>)[]
+      pageInfo: { hasNextPage: boolean; endCursor: string | null }
+    }
+  }
+  const query = `is:pr repo:${configured} state:open sort:updated-desc`
+  const conversations: DiscoveredConversation[] = []
+  let after: string | null = null
+  for (;;) {
+    const data: SearchResult = await graphql<SearchResult>(
+      `query ($q: String!, $after: String) {
+        search(query: $q, type: ISSUE, first: 100, after: $after) {
+          nodes { ... on PullRequest { id number updatedAt } }
+          pageInfo { hasNextPage endCursor }
+        }
+      }`,
+      { q: query, after },
+    )
+    for (const node of data.search.nodes) {
+      if (!('id' in node)) continue
+      conversations.push({ kind: 'pullRequest', repo: configured, number: node.number, nodeId: node.id, updatedAt: node.updatedAt })
+    }
+    if (!data.search.pageInfo.hasNextPage) break
+    if (budgetDegraded()) return null
+    after = data.search.pageInfo.endCursor
+  }
+  return conversations
 }
 
 // ---------- Read state ----------
@@ -379,6 +589,16 @@ export async function markRead(nodeId: string): Promise<void> {
 /** Optimistic local update after a status/snooze edit. */
 export function applyLocalEdit(nodeId: string, patch: Partial<CachedRow>): void {
   updateCachedRow(nodeId, patch)
+  emitRows()
+}
+
+export function removeConversation(nodeId: string): void {
+  const row = getCachedRow(nodeId)
+  if (row) pendingThreadIds.delete(refKey({ kind: row.kind, repo: row.repo, number: row.issueNumber }))
+  const threadId = threadByNode.get(nodeId)
+  if (threadId) notificationUpdatedAt.delete(threadId)
+  threadByNode.delete(nodeId)
+  removeCachedRow(nodeId)
   emitRows()
 }
 

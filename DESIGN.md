@@ -1,28 +1,26 @@
 # Top Goose
 
-Top Goose is a desktop app for working with GitHub issues as conversations, with a private Goose side-channel attached to each issue.
+Top Goose is a desktop app for working with GitHub issues and pull requests as conversations, with a private Goose side-channel attached to each one.
 
 The core UI looks more like Slack than GitHub:
 
-- Left: issues as channels
+- Left: issues or pull requests as channels
 - Center: the GitHub discussion
-- Top: issue metadata
-- Right: a private Goose conversation scoped to the current issue
+- Top: issue or pull request metadata
+- Right: a private Goose conversation scoped to the current GitHub conversation
 
 GitHub remains the source of truth for the public conversation. Goose maintains a separate private conversation that is continuously given enough GitHub context to understand what is happening.
 
-Top Goose is issue-first. Pull requests are not channels and are not rendered as conversations. In agentic development the issue is where intent, discussion, and decisions live; the pull request is an implementation detail downstream of it.
+Issues and pull requests share the channel list and persistent Goose pane, but they keep separate center views and filters. A PR view includes its description, general comments, submitted review summaries, and inline review threads. Top Goose does not try to become a full code review client: Goose already has the repository context and can use `gh` for most actions. Approve is the one direct PR action because it is common and unambiguous.
 
-The first version does not surface pull requests at all, not even as a link on the issue that produced them. There is no field on an issue naming the PR that implements it, so the link has to be inferred from timeline cross-reference events, which is both an extra connection in the hydration query and a heuristic that will sometimes be wrong. It is worth revisiting once the app is otherwise working; a reasonable rule would be to prefer an explicitly connected PR, then the most recently updated open cross-referencing one. Nothing else in the design depends on it.
-
-This is a deliberate scope decision rather than a deferral. Pull requests carry review threads, inline diff comments, review state, and file diffs, none of which are the same shape as an issue conversation, and rendering them as a flat comment transcript would lose most of what a review is. If PR review ever belongs in this app it needs its own design.
+Opening a PR never checks out or runs contributor code. The persistent Goose session starts in the configured clone or a neutral `pr-N` worktree; Goose checks out PR code only when the user asks.
 
 ## Goals
 
 - Make GitHub issues feel like chat channels
 - Provide a fast inbox for conversations that need attention
 - Make replying to GitHub discussions pleasant
-- Attach a persistent Goose conversation to each issue
+- Attach a persistent Goose conversation to each issue and pull request
 - Keep the public GitHub conversation and private Goose conversation distinct
 - Keep GitHub API cost proportional to actual activity rather than to elapsed time
 - Keep the first implementation small
@@ -37,11 +35,9 @@ The first version targets:
 - GitHub GraphQL API for batched sidebar hydration and Projects V2 fields
 - GitHub Notifications API
 - Goose via ACP(+) v1
-- One Goose session per GitHub issue
+- One Goose session per GitHub issue or pull request
 
 Supporting arbitrary ACP agents is explicitly not required initially.
-
-Pull requests as conversations are out of scope, as described above.
 
 ## UI
 
@@ -49,11 +45,11 @@ Reference mockup:
 
 ![Top Goose UI](TopGoose.png)
 
-The mockup predates two decisions in this document and is illustrative rather than exact: it shows a pull request as a channel, which is now out of scope, and it labels the right pane "AI Side Channel" rather than naming Goose.
+The mockup is illustrative rather than exact and labels the right pane "AI Side Channel" rather than naming Goose.
 
 ### Left Pane
 
-A Slack-like list of GitHub conversations, sorted by most recent update rather than grouped by workflow state.
+A Slack-like list of GitHub conversations, sorted by most recent update rather than grouped by workflow state. A centered segmented control switches between issues and pull requests.
 
 Sources can include:
 
@@ -63,7 +59,7 @@ Sources can include:
 - Mentions
 - Unread activity
 
-Notifications about pull requests are filtered out of the list.
+Issue and pull request notifications update their matching lists.
 
 Each row shows the issue title, unread count where relevant, and a compact second line with its workflow state and useful context from the latest activity.
 
@@ -77,6 +73,10 @@ Zip crashes on large files (2)
 Workflow states such as `Inbox`, `Needs Information`, `Triaged`, and `Ready` are the `Status` field of the issue's Projects V2 board item, not issue labels and not separate sections in the sidebar.
 
 The sidebar can filter to one workflow state at a time. This filter combines with the unread, unreplied, and assigned filters.
+
+Pull requests have separate filters for review requested, assigned, authored, older than seven days, unsolicited contributions, draft/ready state, and review decision. An unsolicited PR is a ready PR from outside the core team with no linked issue or with a linked issue still in Inbox.
+
+Search uses GitHub's issue and pull request search, scoped to the configured repository. Results can include closed conversations and anything else outside the open-item index. Selecting a result switches to the matching issue or pull request view and opens the normal detail and persistent Goose panes without adding the result to the regular sidebar list.
 
 This matters for the API design: Projects V2 fields exist only in GraphQL. There is no REST equivalent. Any view that shows workflow state, including the sidebar, requires a GraphQL read.
 
@@ -115,6 +115,12 @@ Below that, render the issue body and comments as a chat transcript.
 
 Replies from Top Goose are posted directly to GitHub.
 
+### Pull Request Center Pane
+
+Pull requests have their own center view. The header shows branches, draft state, mergeability, checks, review decision, requested reviewers, and assignees. The transcript combines the description, general comments, submitted review summaries, and inline review threads in time order. Inline threads retain their file, line, diff hunk, replies, and resolved state.
+
+General replies post to the PR's GitHub conversation. Approve submits an `APPROVE` review and then refreshes the displayed review state. Close closes the PR and removes it from the open sidebar. Other actions stay in the Goose pane: the user can ask Goose to inspect checks, comment, check out the PR, request changes, or merge it with `gh`.
+
 ### Editing Workflow State
 
 The metadata header is not read-only. Triage is the main reason to be in this app, so the two fields that drive triage are editable in place:
@@ -149,6 +155,8 @@ A private Goose conversation associated with the current GitHub issue.
 
 Nothing written here is posted to GitHub automatically.
 
+Enter submits the Goose prompt; Shift-Enter inserts a newline. Codex review findings from the Codex bot include an explicit action that copies the cleaned finding into the Goose prompt without sending it. Existing prompt text is preserved.
+
 Typical uses:
 
 - "What is Jasper objecting to?"
@@ -172,7 +180,7 @@ An alternative considered and rejected was having Goose emit a sentinel such as 
 
 The tool is served by an MCP endpoint in the Electron main process, registered with each Goose session as a `streamable_http` extension.
 
-The main process is the right home because the handler needs the current issue, the ACP session, and a channel to the renderer's composer. A `stdio` extension would not work: Goose spawns those as child processes, which have no access to any of that.
+The main process is the right home because the handler needs the current GitHub conversation, the ACP session, and a channel to the renderer's composer. A `stdio` extension would not work: Goose spawns those as child processes, which have no access to any of that.
 
 ```ts
 {
@@ -214,7 +222,7 @@ If a single turn produces several drafts, the last one wins, subject to the same
 
 Goose keeps streaming when the user switches issues, so a draft routinely arrives for an issue that is no longer on screen. It belongs to its originating session and must never land in whatever composer happens to be visible.
 
-An arriving draft therefore attaches to its own issue as a pending draft. If that issue is open it applies immediately under the rules above; if not, it waits, marked on that issue's sidebar row, and applies when the user next opens it. The dirty check runs at that point, not on arrival.
+An arriving draft therefore attaches to its own issue or PR as a pending draft. If that conversation is open it applies immediately under the rules above; if not, it waits on its sidebar row and applies when the user next opens it. The dirty check runs at that point, not on arrival.
 
 ## GitHub Activity
 
@@ -226,11 +234,11 @@ The design splits change detection from hydration, because the two have very dif
 
 ### Discovery Is Not The Same As Change Detection
 
-Notifications alone cannot produce the sidebar. `/notifications` returns unread threads the user is subscribed to, so quiet issues disappear from it even though the sidebar promises to show every open issue in the repository.
+Notifications alone cannot produce the sidebar. `/notifications` returns unread threads the user is subscribed to, so quiet conversations disappear from it even though the sidebar promises to show every open issue and PR in the repository.
 
 Discovery and change detection are therefore separate jobs:
 
-- **Reconciliation** establishes the complete desired set with a GraphQL search for every open issue in the configured repository. It runs at startup and then on a slow timer, measured in minutes.
+- **Reconciliation** establishes the complete desired set with lightweight GraphQL searches for each open issue and PR's ID and update timestamp. It runs at startup and then on a slow timer, measured in minutes.
 - **Change detection** notices activity within that set, using notifications.
 
 Reconciliation must stay on the slow path. `search` is the expensive GraphQL connection and carries its own throttle, so it does not belong on the poll tick. Rows that reconciliation drops from the set are removed; rows it adds are hydrated like any other.
@@ -245,7 +253,7 @@ This is the loop that runs continuously.
 
 A sidebar row needs the title, workflow status, snooze date, comment count, and latest activity snippet. Assembling that per row over REST is many calls, and workflow status is not available over REST at all.
 
-So hydration is a single batched GraphQL query over the issues that notifications says actually changed, fetched by node ID.
+So hydration is a batched GraphQL query over conversations that notifications or lightweight reconciliation says actually changed, fetched by repository and number.
 
 Nothing changed means no GraphQL call at all. The cost of running Top Goose therefore tracks real activity rather than uptime.
 
@@ -253,7 +261,7 @@ Nothing changed means no GraphQL call at all. The cost of running Top Goose ther
 
 GraphQL is budgeted at 5,000 points per hour, where a query's cost is approximately its total connection fetches divided by 100, rounded up, minimum 1.
 
-A sidebar query returning 50 issues, each with a small page of labels, project field values, and one latest comment, costs on the order of 150 fetches, so about 2 points. That is cheap. The hourly budget is not the real constraint for this shape of query.
+Nested project fields make a fully hydrated page materially more expensive than a discovery page. Reconciliation therefore requests only IDs and update timestamps; the nested row fragment is reserved for new and changed conversations.
 
 Quota exhaustion in practice comes from four things, and the design avoids each:
 
@@ -274,11 +282,12 @@ Top Goose should initially avoid a general-purpose local database.
 
 There are two kinds of durable state, and they are different in character.
 
-The issue-to-session mapping is owned by Top Goose and cannot be reconstructed from anywhere else:
+The GitHub-conversation-to-session mapping is owned by Top Goose and cannot be reconstructed from anywhere else. It is keyed by the GitHub node ID; the stored kind distinguishes issues from pull requests.
 
 ```ts
 type IssueSession = {
   issueNodeId: string   // primary key
+  kind: 'issue' | 'pullRequest'
   host: string          // "github.com", or a GHES host
   account: string       // which authenticated account
   repo: string          // denormalized, for display and debugging
@@ -290,7 +299,7 @@ type IssueSession = {
 }
 ```
 
-The key is the issue node ID, not `repo` plus number. Repository transfers and renames change both of those, and this project already demonstrates the problem: the examples below say `block/goose#1234` while the board lives under a different organisation. Keying on the node ID costs nothing now and avoids silently orphaning every session later. `host` and `account` are included so a GHES instance or a second account cannot collide.
+The key is the GitHub node ID, not `repo` plus number. Repository transfers and renames change both of those. Keying on the node ID avoids silently orphaning sessions later. `host` and `account` are included so a GHES instance or a second account cannot collide.
 
 The sidebar cache is derived and disposable. It exists so that hydration only pays for what changed, and so the app paints instantly on launch:
 
@@ -311,13 +320,13 @@ type CachedRow = {
 }
 ```
 
-Cache the rendered row rather than raw API payloads. `updatedAt` is the invalidation key: since GraphQL cannot return `304`, comparing the notification's timestamp against the cached row is the hand-rolled equivalent of a conditional request.
+Cache the rendered row rather than raw API payloads. `updatedAt` is the invalidation key for reconciliation. Notification timestamps belong to notification threads rather than issue objects, so change detection keeps a separate last-seen timestamp per thread.
 
-On launch the sidebar renders from cache first and reconciles afterwards, so a cold start is one batched query rather than dozens.
+On launch the sidebar renders from cache first and reconciles afterwards. A fresh cache hydrates new rows in batches rather than issuing one request per conversation.
 
 Both can initially live in a simple Electron persistence mechanism. If comment caching later grows enough to want indexed queries, SQLite is the natural next step, but it is not needed to start.
 
-GitHub owns issue state.
+GitHub owns issue and pull request state.
 
 Goose owns the private ACP conversation.
 
@@ -335,7 +344,6 @@ type RepoConfig = {
   path: string          // local clone
   board?: BoardConfig
   useWorktrees: boolean
-  instructions?: string
 }
 ```
 
@@ -345,13 +353,13 @@ type RepoConfig = {
 
 With `useWorktrees` off, every session for that repository runs in the clone itself. This is simpler and fine for read-only questions, but two sessions working at once will interfere with each other.
 
-With it on, each issue session gets its own git worktree, created lazily on the first turn that needs it and branched per issue. Sessions can then change Git state concurrently without trampling each other or the main checkout, at the cost of disk and of worktrees outliving the issues that created them. A worktree is not a filesystem or network sandbox. Top Goose should offer to remove a worktree when its issue is closed, rather than reaping anything automatically.
+With it on, each session gets its own git worktree, created lazily on the first turn that needs it and named `issue-N` or `pr-N`. Sessions can then change Git state concurrently without trampling each other or the main checkout. A worktree is not a filesystem or network sandbox. Top Goose should offer to remove a worktree when its conversation closes, rather than reaping anything automatically.
 
 Worktrees is the recommended setting for anything beyond read-only use.
 
 ### Instructions
 
-Free-text instructions are appended to the system prompt of every session for that repository, alongside a global instruction block that applies everywhere. This is where conventions that are not derivable from the code go: how to run the tests, what the review expectations are, which paths are off limits.
+Settings has separate free-text instruction blocks for issues and pull requests. The matching block is appended to each session's system prompt and reapplied before every turn, so changes take effect for sessions that are already open. This is where conventions that are not derivable from the code go: how to run the tests, what the review expectations are, which paths are off limits.
 
 The issue context described in the following sections is per-turn context, distinct from these instructions, which are per-session.
 
@@ -401,6 +409,8 @@ If none exists, it creates a new ACP session.
 If one exists, it loads or resumes that Goose session.
 
 Merely opening an issue should not cause an agent turn.
+
+Selecting another issue or pull request does not cancel an active turn. ACP updates stay keyed to their originating conversation, the renderer keeps applying them while another conversation is visible, and the sidebar marks conversations where Goose is still working. Session instructions tell Goose to complete available work in the current turn rather than ending with a promise to continue later.
 
 ## First Goose Turn
 
@@ -524,6 +534,8 @@ Snapshot-only for everything is the obvious simplification and is deliberately n
 
 If the fallback detection proves unreliable in practice, the retreat is snapshot-only, accepting the cost.
 
+Pull request synchronization uses snapshots. A cheap PR metadata request first compares `updated_at`; only a changed PR fetches the independently changing collections of general comments, review summaries, and inline threads. A hash of that complete discussion then avoids sending duplicate context, while a changed hash sends the full current PR discussion.
+
 ## ACP(+) v1
 
 The first version only needs to work with Goose ACP(+).
@@ -589,7 +601,7 @@ Goose
   owns private agent session history
 
 Top Goose
-  owns UI state and issue <-> session mapping
+  owns UI state and GitHub conversation <-> session mapping
 ```
 
 Top Goose should avoid maintaining its own duplicate canonical copy of GitHub conversations. The sidebar cache is not an exception to this: it is derived data that may be deleted at any time, and the app must behave correctly, if more slowly, with an empty cache.
@@ -599,21 +611,21 @@ Top Goose should avoid maintaining its own duplicate canonical copy of GitHub co
 A useful first version only needs:
 
 1. Authenticate with GitHub as a GitHub App
-2. Reconcile the desired issue set with a periodic search
+2. Reconcile every open issue and pull request with periodic searches
 3. Poll notifications conditionally to detect what changed
 4. Hydrate changed rows with one batched GraphQL query and cache the result
-5. Show GitHub conversations as a single last-updated list, with workflow status and unread counts
-6. Open an issue and render its body/comments
-7. Reply to the issue
+5. Switch between last-updated issue and PR lists, with filters suited to each
+6. Render issue discussions and PR discussions, including inline review threads
+7. Reply to issues and PRs, and approve PRs
 8. Edit `Status` and snooze date from the metadata header
 9. Configure a local clone, board, and worktree preference per repository
 10. Locate the goose binary, with an override in settings
-11. Start a Goose ACP session for an issue, in the right working directory
-12. Persist the issue-to-session mapping, keyed on issue node ID
+11. Start a Goose ACP session for an issue or PR, in the right working directory
+12. Persist the issue/PR-to-session mapping, keyed on GitHub node ID
 13. Bootstrap Goose with the current GitHub conversation
 14. Inject subsequent GitHub deltas into later Goose prompts
 15. Serve `draft_reply` and land drafts in the reply composer
-16. Resume the same private Goose conversation after reopening the issue
+16. Resume the same private Goose conversation after reopening the issue or PR
 
 Two decisions carry a documented retreat if V1 proves harder than expected: unread counts fall back to an unread dot, and delta synchronization falls back to full snapshots. Neither retreat affects anything else in the design.
 

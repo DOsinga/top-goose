@@ -7,7 +7,21 @@ import { JsonFile } from './persist'
 let settingsFile: JsonFile<Settings> | null = null
 
 export function settings(): JsonFile<Settings> {
-  settingsFile ??= new JsonFile<Settings>('settings.json', {})
+  if (settingsFile) return settingsFile
+  settingsFile = new JsonFile<Settings>('settings.json', {})
+  const current = settingsFile.get() as Settings & {
+    globalInstructions?: string
+    repo?: RepoConfig & { instructions?: string }
+  }
+  if ('globalInstructions' in current || (current.repo && 'instructions' in current.repo)) {
+    const next = { ...current }
+    delete next.globalInstructions
+    if (next.repo) {
+      next.repo = { ...next.repo }
+      delete next.repo.instructions
+    }
+    settingsFile.set(next)
+  }
   return settingsFile
 }
 
@@ -67,6 +81,7 @@ export function setAuthLogin(login: string): void {
 
 export type IssueSession = {
   issueNodeId: string // primary key
+  kind?: 'issue' | 'pullRequest'
   host: string
   account: string
   repo: string
@@ -122,11 +137,26 @@ function sidebarCache(): JsonFile<SidebarCache> {
 }
 
 export function getCachedRows(): CachedRow[] {
-  return Object.values(sidebarCache().get().rows)
+  return Object.values(sidebarCache().get().rows).map((row) => ({ ...row, kind: row.kind ?? 'issue' }))
 }
 
 export function getCachedRow(nodeId: string): CachedRow | undefined {
-  return sidebarCache().get().rows[nodeId]
+  const row = sidebarCache().get().rows[nodeId]
+  return row ? { ...row, kind: row.kind ?? 'issue' } : undefined
+}
+
+const searchedRows = new Map<string, CachedRow>()
+
+export function putSearchedRows(rows: CachedRow[]): void {
+  for (const row of rows) searchedRows.set(row.nodeId, row)
+}
+
+export function getConversationRow(nodeId: string): CachedRow | undefined {
+  return getCachedRow(nodeId) ?? searchedRows.get(nodeId)
+}
+
+export function clearSearchedRows(): void {
+  searchedRows.clear()
 }
 
 export function putCachedRows(rows: CachedRow[]): void {

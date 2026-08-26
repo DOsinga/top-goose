@@ -9,7 +9,9 @@ import * as activity from './activity'
 import { authState, setPat, signOut } from './github/auth'
 import { onBudgetChange, getBudget } from './github/client'
 import { fetchIssueDetail, postComment, setIssueAssignee } from './github/issues'
+import { approvePullRequest, closePullRequest, fetchPullRequestDetail } from './github/pullRequests'
 import { listFields, listProjects, setIssueSnooze, setIssueStatus } from './github/projects'
+import { searchConversations } from './github/search'
 import { findGoose, invalidateGooseInfo } from './goose/discover'
 import {
   cancelIssue,
@@ -19,7 +21,15 @@ import {
   resetSessions,
 } from './goose/sessions'
 import { onDraft } from './mcp/draftServer'
-import { getAuthMeta, getCachedRow, getGitHubToken, repoConfig, settings, takePendingDraft } from './store'
+import {
+  getAuthMeta,
+  getConversationRow,
+  getGitHubToken,
+  putSearchedRows,
+  repoConfig,
+  settings,
+  takePendingDraft,
+} from './store'
 
 function handle<C extends keyof InvokeMap>(
   channel: C,
@@ -131,16 +141,24 @@ export function registerIpc(): void {
   handle('sidebar:refresh', async () => {
     await activity.refreshNow()
   })
+  handle('search:conversations', async (query) => {
+    if (!query.trim()) return []
+    const repo = settings().get().repo?.repo
+    if (!repo) throw new Error('configure a repository before searching GitHub')
+    const rows = await searchConversations(repo, query)
+    putSearchedRows(rows)
+    return rows
+  })
 
   // ----- issue detail -----
   handle('issue:open', async (nodeId) => {
-    const row = getCachedRow(nodeId)
-    if (!row) throw new Error('unknown issue')
+    const row = getConversationRow(nodeId)
+    if (!row || row.kind !== 'issue') throw new Error('unknown issue')
     return fetchIssueDetail(row.repo, row.issueNumber)
   })
   handle('issue:markRead', (nodeId) => activity.markRead(nodeId))
   handle('issue:reply', async (nodeId, body) => {
-    const row = getCachedRow(nodeId)
+    const row = getConversationRow(nodeId)
     if (!row) throw new Error('unknown issue')
     const comment = await postComment(row.repo, row.issueNumber, body)
     // own reply counts as read
@@ -153,14 +171,14 @@ export function registerIpc(): void {
     return comment
   })
   handle('issue:setAssignee', async (nodeId, login) => {
-    const row = getCachedRow(nodeId)
+    const row = getConversationRow(nodeId)
     if (!row) throw new Error('unknown issue')
     const assignees = await setIssueAssignee(row.repo, row.issueNumber, login)
     activity.applyLocalEdit(nodeId, { assignees })
     return assignees
   })
   handle('issue:setStatus', async (nodeId, status) => {
-    const row = getCachedRow(nodeId)
+    const row = getConversationRow(nodeId)
     if (!row) throw new Error('unknown issue')
     const board = repoConfig(row.repo)?.board
     if (!board) throw new Error(`no board configured for ${row.repo}`)
@@ -174,7 +192,7 @@ export function registerIpc(): void {
     }
   })
   handle('issue:setSnooze', async (nodeId, date) => {
-    const row = getCachedRow(nodeId)
+    const row = getConversationRow(nodeId)
     if (!row) throw new Error('unknown issue')
     const board = repoConfig(row.repo)?.board
     if (!board) throw new Error(`no board configured for ${row.repo}`)
@@ -185,6 +203,39 @@ export function registerIpc(): void {
       activity.applyLocalEdit(nodeId, { snoozedUntil: row.snoozedUntil })
       throw err
     }
+  })
+
+  // ----- pull request detail -----
+  handle('pullRequest:open', async (nodeId) => {
+    const row = getConversationRow(nodeId)
+    if (!row || row.kind !== 'pullRequest') throw new Error('unknown pull request')
+    return fetchPullRequestDetail(row.repo, row.issueNumber)
+  })
+  handle('pullRequest:reply', async (nodeId, body) => {
+    const row = getConversationRow(nodeId)
+    if (!row || row.kind !== 'pullRequest') throw new Error('unknown pull request')
+    const comment = await postComment(row.repo, row.issueNumber, body)
+    activity.applyLocalEdit(nodeId, {
+      commentCount: row.commentCount + 1,
+      commentCountAtRead: row.commentCount + 1,
+      lastComment: { author: comment.author, snippet: comment.body.replace(/\s+/g, ' ').slice(0, 120) },
+      updatedAt: comment.createdAt,
+    })
+    return comment
+  })
+  handle('pullRequest:approve', async (nodeId) => {
+    const row = getConversationRow(nodeId)
+    if (!row || row.kind !== 'pullRequest') throw new Error('unknown pull request')
+    await approvePullRequest(row.repo, row.issueNumber)
+    const pullRequest = await fetchPullRequestDetail(row.repo, row.issueNumber)
+    activity.applyLocalEdit(nodeId, { reviewDecision: pullRequest.reviewDecision })
+    return pullRequest
+  })
+  handle('pullRequest:close', async (nodeId) => {
+    const row = getConversationRow(nodeId)
+    if (!row || row.kind !== 'pullRequest') throw new Error('unknown pull request')
+    await closePullRequest(row.repo, row.issueNumber)
+    activity.removeConversation(nodeId)
   })
 
   // ----- board setup -----
