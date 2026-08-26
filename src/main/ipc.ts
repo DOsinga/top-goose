@@ -9,7 +9,7 @@ import * as activity from './activity'
 import { authState, setPat, signOut } from './github/auth'
 import { onBudgetChange, getBudget } from './github/client'
 import { fetchIssueDetail, postComment, setIssueAssignee } from './github/issues'
-import { approvePullRequest, fetchPullRequestDetail } from './github/pullRequests'
+import { approvePullRequest, closePullRequest, fetchPullRequestDetail } from './github/pullRequests'
 import { listFields, listProjects, setIssueSnooze, setIssueStatus } from './github/projects'
 import { searchConversations } from './github/search'
 import { findGoose, invalidateGooseInfo } from './goose/discover'
@@ -230,6 +230,12 @@ export function registerIpc(): void {
     const pullRequest = await fetchPullRequestDetail(row.repo, row.issueNumber)
     activity.applyLocalEdit(nodeId, { reviewDecision: pullRequest.reviewDecision })
     return pullRequest
+  })
+  handle('pullRequest:close', async (nodeId) => {
+    const row = getConversationRow(nodeId)
+    if (!row || row.kind !== 'pullRequest') throw new Error('unknown pull request')
+    await closePullRequest(row.repo, row.issueNumber)
+    activity.removeConversation(nodeId)
   })
 
   // ----- board setup -----

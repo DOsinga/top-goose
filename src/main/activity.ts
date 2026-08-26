@@ -592,6 +592,16 @@ export function applyLocalEdit(nodeId: string, patch: Partial<CachedRow>): void 
   emitRows()
 }
 
+export function removeConversation(nodeId: string): void {
+  const row = getCachedRow(nodeId)
+  if (row) pendingThreadIds.delete(refKey({ kind: row.kind, repo: row.repo, number: row.issueNumber }))
+  const threadId = threadByNode.get(nodeId)
+  if (threadId) notificationUpdatedAt.delete(threadId)
+  threadByNode.delete(nodeId)
+  removeCachedRow(nodeId)
+  emitRows()
+}
+
 export function notifyRowsChanged(): void {
   emitRows()
 }

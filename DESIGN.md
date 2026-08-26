@@ -119,7 +119,7 @@ Replies from Top Goose are posted directly to GitHub.
 
 Pull requests have their own center view. The header shows branches, draft state, mergeability, checks, review decision, requested reviewers, and assignees. The transcript combines the description, general comments, submitted review summaries, and inline review threads in time order. Inline threads retain their file, line, diff hunk, replies, and resolved state.
 
-General replies post to the PR's GitHub conversation. Approve submits an `APPROVE` review and then refreshes the displayed review state. Other actions stay in the Goose pane: the user can ask Goose to inspect checks, comment, check out the PR, request changes, or merge it with `gh`.
+General replies post to the PR's GitHub conversation. Approve submits an `APPROVE` review and then refreshes the displayed review state. Close closes the PR and removes it from the open sidebar. Other actions stay in the Goose pane: the user can ask Goose to inspect checks, comment, check out the PR, request changes, or merge it with `gh`.
 
 ### Editing Workflow State
 

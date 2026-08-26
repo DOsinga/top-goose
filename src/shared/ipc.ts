@@ -52,6 +52,7 @@ export type InvokeMap = {
   'pullRequest:open': (nodeId: string) => PullRequestDetail
   'pullRequest:reply': (nodeId: string, body: string) => IssueComment_
   'pullRequest:approve': (nodeId: string) => PullRequestDetail
+  'pullRequest:close': (nodeId: string) => void
 
   // board setup
   'board:listProjects': (repo: string) => ProjectSummary[]

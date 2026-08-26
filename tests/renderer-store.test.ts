@@ -80,6 +80,7 @@ beforeEach(() => {
     pullRequestLoading: false,
     pullRequestError: null,
     approvalSaving: false,
+    closingPullRequest: false,
     composers: {},
     gooseChats: {},
     gooseInputs: {},
@@ -144,6 +145,36 @@ describe('pull request selection', () => {
     expect(invoke).toHaveBeenCalledWith('pullRequest:approve', 'PR')
     expect(useStore.getState().pullRequest?.viewerReviewState).toBe('APPROVED')
     expect(useStore.getState().approvalSaving).toBe(false)
+  })
+
+  it('closes the pull request and removes it from the open sidebar', async () => {
+    invoke.mockResolvedValue(undefined)
+    const current = pullRequest('PR', 7)
+    useStore.setState({
+      conversationKind: 'pullRequest',
+      rows: [
+        {
+          kind: 'pullRequest',
+          repo: 'owner/repo',
+          issueNumber: 7,
+          nodeId: 'PR',
+          title: 'Pull request 7',
+          state: 'open',
+          commentCount: 0,
+          updatedAt: '2026-01-01T00:00:00Z',
+          hydratedAt: '2026-01-01T00:00:00Z',
+        },
+      ],
+      selectedNodeId: 'PR',
+      pullRequest: current,
+    })
+
+    await useStore.getState().closePullRequest()
+
+    expect(invoke).toHaveBeenCalledWith('pullRequest:close', 'PR')
+    expect(useStore.getState().pullRequest?.state).toBe('closed')
+    expect(useStore.getState().rows).toEqual([])
+    expect(useStore.getState().closingPullRequest).toBe(false)
   })
 
   it('keeps another pull request session running when navigation changes', async () => {

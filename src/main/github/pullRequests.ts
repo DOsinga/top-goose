@@ -304,3 +304,7 @@ export async function fetchPullRequestDetail(repo: string, number: number): Prom
 export async function approvePullRequest(repo: string, number: number): Promise<void> {
   await restSend('POST', `/repos/${repo}/pulls/${number}/reviews`, { event: 'APPROVE' })
 }
+
+export async function closePullRequest(repo: string, number: number): Promise<void> {
+  await restSend('PATCH', `/repos/${repo}/pulls/${number}`, { state: 'closed' })
+}

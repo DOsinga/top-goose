@@ -39,17 +39,27 @@ export function PullRequestPane(): React.JSX.Element {
 function PullRequestHeader({ pullRequest }: { pullRequest: PullRequestDetail }): React.JSX.Element {
   const login = useStore((state) => state.auth?.login)
   const approve = useStore((state) => state.approvePullRequest)
-  const saving = useStore((state) => state.approvalSaving)
+  const close = useStore((state) => state.closePullRequest)
+  const approving = useStore((state) => state.approvalSaving)
+  const closing = useStore((state) => state.closingPullRequest)
   const url = `https://github.com/${pullRequest.repo}/pull/${pullRequest.pullRequestNumber}`
   const ownPullRequest = pullRequest.author.toLowerCase() === login?.toLowerCase()
   const approved = pullRequest.viewerReviewState === 'APPROVED'
   const canApprove = pullRequest.state === 'open' && !ownPullRequest && !approved
-  const state = pullRequest.merged ? 'merged' : pullRequest.isDraft ? 'draft' : pullRequest.state
+  const state = pullRequest.merged
+    ? 'merged'
+    : pullRequest.state === 'closed'
+      ? 'closed'
+      : pullRequest.isDraft
+        ? 'draft'
+        : 'open'
   const stateColor = pullRequest.merged
     ? 'bg-purple-100 text-purple-800'
-    : pullRequest.isDraft
-      ? 'bg-gray-200 text-gray-700'
-      : 'bg-green-100 text-green-800'
+    : pullRequest.state === 'closed'
+      ? 'bg-red-100 text-red-800'
+      : pullRequest.isDraft
+        ? 'bg-gray-200 text-gray-700'
+        : 'bg-green-100 text-green-800'
 
   return (
     <div className="shrink-0 border-b border-gray-200 px-5 py-3">
@@ -64,7 +74,7 @@ function PullRequestHeader({ pullRequest }: { pullRequest: PullRequestDetail }):
         </span>
         <button
           className="shrink-0 rounded-lg bg-green-600 px-3 py-1 text-xs font-medium text-white disabled:bg-gray-200 disabled:text-gray-500"
-          disabled={!canApprove || saving}
+          disabled={!canApprove || approving || closing}
           title={
             ownPullRequest
               ? 'You cannot approve your own pull request'
@@ -74,7 +84,14 @@ function PullRequestHeader({ pullRequest }: { pullRequest: PullRequestDetail }):
           }
           onClick={() => void approve()}
         >
-          {saving ? 'Approving…' : approved ? 'Approved' : 'Approve'}
+          {approving ? 'Approving…' : approved ? 'Approved' : 'Approve'}
+        </button>
+        <button
+          className="shrink-0 rounded-lg border border-red-300 px-3 py-1 text-xs font-medium text-red-700 hover:bg-red-50 disabled:border-gray-200 disabled:text-gray-400 disabled:hover:bg-transparent"
+          disabled={pullRequest.state !== 'open' || closing || approving}
+          onClick={() => void close()}
+        >
+          {closing ? 'Closing…' : pullRequest.state === 'closed' ? 'Closed' : 'Close'}
         </button>
       </div>
       <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-gray-500">

@@ -54,6 +54,7 @@ export type State = {
   pullRequestLoading: boolean
   pullRequestError: string | null
   approvalSaving: boolean
+  closingPullRequest: boolean
   composers: Record<string, ComposerState>
   gooseChats: Record<string, GooseChat>
   gooseInputs: Record<string, string>
@@ -69,6 +70,7 @@ export type State = {
   reply: () => Promise<void>
   replyToPullRequest: () => Promise<void>
   approvePullRequest: () => Promise<void>
+  closePullRequest: () => Promise<void>
   setAssignee: (login: string | null) => Promise<void>
   setStatus: (status: string) => Promise<void>
   setSnooze: (date: string | null) => Promise<void>
@@ -117,6 +119,7 @@ export const useStore = create<State>((set, get) => ({
   pullRequestLoading: false,
   pullRequestError: null,
   approvalSaving: false,
+  closingPullRequest: false,
   composers: {},
   gooseChats: {},
   gooseInputs: {},
@@ -152,6 +155,7 @@ export const useStore = create<State>((set, get) => ({
           pullRequestLoading: false,
           pullRequestError: null,
           approvalSaving: false,
+          closingPullRequest: false,
           composers: {},
           gooseChats: {},
           gooseInputs: {},
@@ -263,6 +267,7 @@ export const useStore = create<State>((set, get) => ({
       pullRequestLoading: true,
       pullRequestError: null,
       approvalSaving: false,
+      closingPullRequest: false,
       view: 'main',
     })
     void api.invoke('issue:markRead', nodeId)
@@ -452,9 +457,17 @@ export const useStore = create<State>((set, get) => ({
   },
 
   approvePullRequest: async () => {
-    const { selectedNodeId, pullRequest, approvalSaving } = get()
+    const { selectedNodeId, pullRequest, approvalSaving, closingPullRequest } = get()
     const generation = get().generation
-    if (!selectedNodeId || !pullRequest || pullRequest.nodeId !== selectedNodeId || approvalSaving) return
+    if (
+      !selectedNodeId ||
+      !pullRequest ||
+      pullRequest.nodeId !== selectedNodeId ||
+      approvalSaving ||
+      closingPullRequest
+    ) {
+      return
+    }
     set({ approvalSaving: true, pullRequestError: null })
     try {
       const next = await api.invoke('pullRequest:approve', selectedNodeId)
@@ -465,6 +478,39 @@ export const useStore = create<State>((set, get) => ({
       if (get().generation === generation && get().selectedNodeId === selectedNodeId) {
         set({
           approvalSaving: false,
+          pullRequestError: err instanceof Error ? err.message : String(err),
+        })
+      }
+    }
+  },
+
+  closePullRequest: async () => {
+    const { selectedNodeId, pullRequest, approvalSaving, closingPullRequest } = get()
+    const generation = get().generation
+    if (
+      !selectedNodeId ||
+      !pullRequest ||
+      pullRequest.nodeId !== selectedNodeId ||
+      pullRequest.state !== 'open' ||
+      approvalSaving ||
+      closingPullRequest
+    ) {
+      return
+    }
+    set({ closingPullRequest: true, pullRequestError: null })
+    try {
+      await api.invoke('pullRequest:close', selectedNodeId)
+      if (get().generation === generation && get().selectedNodeId === selectedNodeId) {
+        set((state) => ({
+          pullRequest: state.pullRequest ? { ...state.pullRequest, state: 'closed' } : null,
+          rows: state.rows.filter((row) => row.nodeId !== selectedNodeId),
+          closingPullRequest: false,
+        }))
+      }
+    } catch (err) {
+      if (get().generation === generation && get().selectedNodeId === selectedNodeId) {
+        set({
+          closingPullRequest: false,
           pullRequestError: err instanceof Error ? err.message : String(err),
         })
       }
@@ -622,6 +668,7 @@ export const useStore = create<State>((set, get) => ({
         pullRequestLoading: false,
         pullRequestError: null,
         approvalSaving: false,
+        closingPullRequest: false,
         composers: {},
         gooseChats: {},
         gooseInputs: {},
