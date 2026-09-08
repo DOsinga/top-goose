@@ -10,8 +10,24 @@ export function App(): React.JSX.Element {
   const init = useStore((s) => s.init)
   const view = useStore((s) => s.view)
   const conversationKind = useStore((s) => s.conversationKind)
+  const goBack = useStore((s) => s.goBack)
+  const goForward = useStore((s) => s.goForward)
 
   useEffect(() => init(), [init])
+  useEffect(() => {
+    const navigateHistory = (event: KeyboardEvent): void => {
+      if (!event.metaKey || event.altKey || event.ctrlKey || event.shiftKey) return
+      if (event.key === '[') {
+        event.preventDefault()
+        void goBack()
+      } else if (event.key === ']') {
+        event.preventDefault()
+        void goForward()
+      }
+    }
+    window.addEventListener('keydown', navigateHistory)
+    return () => window.removeEventListener('keydown', navigateHistory)
+  }, [goBack, goForward])
 
   return (
     <div className="flex h-full flex-col bg-white text-gray-900">

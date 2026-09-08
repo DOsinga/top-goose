@@ -35,6 +35,7 @@ type GooseChat = {
 export type SidebarFilter = 'unread' | 'unreplied' | 'assigned'
 export type PullRequestFilter = 'reviewRequested' | 'assigned' | 'authored' | 'olderThan7Days' | 'unsolicited'
 export type PullRequestStateFilter = 'ready' | 'draft' | 'approved' | 'changesRequested' | 'reviewRequired'
+type NavigationEntry = { kind: ConversationKind; nodeId: string }
 
 export type State = {
   auth: AuthState | null
@@ -61,10 +62,14 @@ export type State = {
   budget: RateBudget | null
   view: 'main' | 'settings'
   generation: number
+  navigationHistory: NavigationEntry[]
+  navigationIndex: number
 
   init: () => () => void
-  selectIssue: (nodeId: string) => Promise<void>
-  selectPullRequest: (nodeId: string) => Promise<void>
+  selectIssue: (nodeId: string, recordHistory?: boolean) => Promise<void>
+  selectPullRequest: (nodeId: string, recordHistory?: boolean) => Promise<void>
+  goBack: () => Promise<void>
+  goForward: () => Promise<void>
   refreshIssue: () => Promise<void>
   refreshPullRequest: () => Promise<void>
   reply: () => Promise<void>
@@ -126,6 +131,8 @@ export const useStore = create<State>((set, get) => ({
   budget: null,
   view: 'main',
   generation: 0,
+  navigationHistory: [],
+  navigationIndex: -1,
 
   init: () => {
     void api.invoke('auth:state').then((auth) => {
@@ -159,6 +166,8 @@ export const useStore = create<State>((set, get) => ({
           composers: {},
           gooseChats: {},
           gooseInputs: {},
+          navigationHistory: [],
+          navigationIndex: -1,
           generation: state.generation + 1,
         })),
       ),
@@ -182,9 +191,11 @@ export const useStore = create<State>((set, get) => ({
     return () => unsubscribers.forEach((u) => u())
   },
 
-  selectIssue: async (nodeId) => {
+  selectIssue: async (nodeId, recordHistory = true) => {
     const generation = get().generation
-    set({
+    set((state) => ({
+      ...navigationUpdate(state, { kind: 'issue', nodeId }, recordHistory),
+      conversationKind: 'issue',
       selectedNodeId: nodeId,
       issue: null,
       pullRequest: null,
@@ -192,7 +203,7 @@ export const useStore = create<State>((set, get) => ({
       issueError: null,
       assigneeSaving: false,
       view: 'main',
-    })
+    }))
     void api.invoke('issue:markRead', nodeId)
 
     // open the goose session in parallel with the issue fetch
@@ -258,9 +269,11 @@ export const useStore = create<State>((set, get) => ({
     if (pending && get().generation === generation) applyDraft(set, get, nodeId, pending.text)
   },
 
-  selectPullRequest: async (nodeId) => {
+  selectPullRequest: async (nodeId, recordHistory = true) => {
     const generation = get().generation
-    set({
+    set((state) => ({
+      ...navigationUpdate(state, { kind: 'pullRequest', nodeId }, recordHistory),
+      conversationKind: 'pullRequest',
       selectedNodeId: nodeId,
       issue: null,
       pullRequest: null,
@@ -269,7 +282,7 @@ export const useStore = create<State>((set, get) => ({
       approvalSaving: false,
       closingPullRequest: false,
       view: 'main',
-    })
+    }))
     void api.invoke('issue:markRead', nodeId)
 
     const chats = get().gooseChats
@@ -336,6 +349,26 @@ export const useStore = create<State>((set, get) => ({
 
     const pending = await api.invoke('draft:take', nodeId)
     if (pending && get().generation === generation) applyDraft(set, get, nodeId, pending.text)
+  },
+
+  goBack: async () => {
+    const { navigationHistory, navigationIndex } = get()
+    if (navigationIndex <= 0) return
+    const nextIndex = navigationIndex - 1
+    const target = navigationHistory[nextIndex]
+    set({ navigationIndex: nextIndex })
+    if (target.kind === 'issue') await get().selectIssue(target.nodeId, false)
+    else await get().selectPullRequest(target.nodeId, false)
+  },
+
+  goForward: async () => {
+    const { navigationHistory, navigationIndex } = get()
+    if (navigationIndex >= navigationHistory.length - 1) return
+    const nextIndex = navigationIndex + 1
+    const target = navigationHistory[nextIndex]
+    set({ navigationIndex: nextIndex })
+    if (target.kind === 'issue') await get().selectIssue(target.nodeId, false)
+    else await get().selectPullRequest(target.nodeId, false)
   },
 
   refreshIssue: async () => {
@@ -672,6 +705,8 @@ export const useStore = create<State>((set, get) => ({
         composers: {},
         gooseChats: {},
         gooseInputs: {},
+        navigationHistory: [],
+        navigationIndex: -1,
         generation: state.generation + 1,
       }
     }),
@@ -703,6 +738,18 @@ export const useStore = create<State>((set, get) => ({
     })),
   setPullRequestStateFilter: (pullRequestStateFilter) => set({ pullRequestStateFilter }),
 }))
+
+function navigationUpdate(
+  state: State,
+  target: NavigationEntry,
+  recordHistory: boolean,
+): Partial<Pick<State, 'navigationHistory' | 'navigationIndex'>> {
+  if (!recordHistory) return {}
+  const current = state.navigationHistory[state.navigationIndex]
+  if (current?.kind === target.kind && current.nodeId === target.nodeId) return {}
+  const navigationHistory = [...state.navigationHistory.slice(0, state.navigationIndex + 1), target]
+  return { navigationHistory, navigationIndex: navigationHistory.length - 1 }
+}
 
 function applyDraft(
   set: (partial: Partial<State>) => void,

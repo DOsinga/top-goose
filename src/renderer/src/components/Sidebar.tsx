@@ -39,7 +39,6 @@ export function Sidebar(): React.JSX.Element {
   const selected = useStore((state) => state.selectedNodeId)
   const selectIssue = useStore((state) => state.selectIssue)
   const selectPullRequest = useStore((state) => state.selectPullRequest)
-  const setConversationKind = useStore((state) => state.setConversationKind)
   const login = useStore((state) => state.auth?.login)
   const issueFilters = useStore((state) => state.sidebarFilters)
   const workflowStatusFilter = useStore((state) => state.workflowStatusFilter)
@@ -86,7 +85,6 @@ export function Sidebar(): React.JSX.Element {
   }, [searchQuery])
 
   const openSearchResult = (row: CachedRow): void => {
-    setConversationKind(row.kind)
     if (row.kind === 'issue') void selectIssue(row.nodeId)
     else void selectPullRequest(row.nodeId)
   }
