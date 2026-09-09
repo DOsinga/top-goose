@@ -7,6 +7,7 @@ import {
   clearSearchedRows,
   getCachedRow,
   getCachedRows,
+  getAuthMeta,
   hasPendingDraft,
   pruneCachedRows,
   putCachedRows,
@@ -43,7 +44,12 @@ let generation = 0
 /** notification thread IDs by issue node ID, for mark-as-read */
 const threadByNode = new Map<string, string>()
 const notificationUpdatedAt = new Map<string, string>()
-type ConversationRef = { kind: 'issue' | 'pullRequest'; repo: string; number: number }
+type ConversationRef = {
+  kind: 'issue' | 'pullRequest'
+  repo: string
+  number: number
+  viewerCommented?: boolean
+}
 type DiscoveredConversation = ConversationRef & { nodeId: string; updatedAt: string }
 
 export function onRows(listener: RowsListener): void {
@@ -316,7 +322,7 @@ function boardFields(
   return item ? extractBoardFields(config.board, item.fieldValues.nodes) : {}
 }
 
-function toRow(issue: GqlIssueRow): CachedRow {
+function toRow(issue: GqlIssueRow, viewerCommented?: boolean): CachedRow {
   const repo = issue.repository.nameWithOwner
   const fields = boardFields(repo, issue.projectItems)
   const last = issue.comments.nodes[0]
@@ -329,6 +335,7 @@ function toRow(issue: GqlIssueRow): CachedRow {
     title: issue.title,
     author: issue.author?.login ?? 'ghost',
     assignees: issue.assignees.nodes.map((a) => a.login),
+    viewerCommented: viewerCommented ?? existing?.viewerCommented,
     state: issue.state.toLowerCase(),
     workflowStatus: fields.status,
     snoozedUntil: fields.snoozedUntil,
@@ -421,7 +428,7 @@ async function hydrateIssues(refs: ConversationRef[], currentGeneration: number)
         removeCachedRow(issue.id)
         continue
       }
-      const row = toRow(issue)
+      const row = toRow(issue, batch[i].viewerCommented)
       const threadId = pendingThreadIds.get(refKey(batch[i]))
       if (threadId) {
         threadByNode.set(row.nodeId, threadId)
@@ -498,6 +505,7 @@ async function reconcile(currentGeneration: number, forceHydration = false): Pro
       forceHydration ||
       !cached ||
       cached.updatedAt !== conversation.updatedAt ||
+      (conversation.kind === 'issue' && cached.viewerCommented !== conversation.viewerCommented) ||
       (conversation.kind === 'pullRequest' && !('linkedIssues' in cached))
     )
   })
@@ -535,7 +543,32 @@ async function reconcileIssues(configured: string): Promise<DiscoveredConversati
     if (budgetDegraded()) return null
     after = data.search.pageInfo.endCursor
   }
-  return conversations
+
+  const login = getAuthMeta().login
+  if (!login) return conversations
+  const commented = new Set<string>()
+  after = null
+  for (;;) {
+    const data: SearchResult = await graphql<SearchResult>(
+      `query ($q: String!, $after: String) {
+        search(query: $q, type: ISSUE, first: 100, after: $after) {
+          nodes { ... on Issue { id number updatedAt } }
+          pageInfo { hasNextPage endCursor }
+        }
+      }`,
+      { q: `is:issue repo:${configured} state:open commenter:${login}`, after },
+    )
+    for (const node of data.search.nodes) {
+      if ('id' in node) commented.add(node.id)
+    }
+    if (!data.search.pageInfo.hasNextPage) break
+    if (budgetDegraded()) return null
+    after = data.search.pageInfo.endCursor
+  }
+  return conversations.map((conversation) => ({
+    ...conversation,
+    viewerCommented: commented.has(conversation.nodeId),
+  }))
 }
 
 async function reconcilePullRequests(configured: string): Promise<DiscoveredConversation[] | null> {

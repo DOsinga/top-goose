@@ -15,6 +15,7 @@ const store = vi.hoisted(() => ({
   clearCachedRows: vi.fn(),
   clearPendingDrafts: vi.fn(),
   clearSearchedRows: vi.fn(),
+  getAuthMeta: vi.fn(),
   getCachedRow: vi.fn(),
   getCachedRows: vi.fn(),
   hasPendingDraft: vi.fn(),
@@ -61,6 +62,7 @@ function row(kind: 'issue' | 'pullRequest', nodeId: string, number: number): Cac
     commentCount: 0,
     updatedAt: '2026-01-01T00:00:00Z',
     hydratedAt: '2026-01-01T00:00:00Z',
+    viewerCommented: kind === 'issue' ? false : undefined,
     linkedIssues: kind === 'pullRequest' ? [] : undefined,
   }
 }
@@ -82,6 +84,7 @@ beforeEach(() => {
   client.restGet.mockResolvedValue({ status: 304, pollInterval: 1, data: null })
   store.getCachedRows.mockImplementation(() => store.rows)
   store.getCachedRow.mockImplementation((nodeId: string) => store.rows.find((item) => item.nodeId === nodeId))
+  store.getAuthMeta.mockReturnValue({ login: 'DOsinga' })
   store.hasPendingDraft.mockReturnValue(false)
   activity.reset()
 })
@@ -115,7 +118,9 @@ describe('GitHub activity loops', () => {
     store.rows = [row('issue', 'issue-node', 1), row('pullRequest', 'pr-node', 2)]
     client.graphql.mockImplementation(async (query: string, variables: { q?: string }) => ({
       search: {
-        nodes: variables.q?.startsWith('is:issue')
+        nodes: variables.q?.includes('commenter:')
+          ? []
+          : variables.q?.startsWith('is:issue')
           ? [{ id: 'issue-node', number: 1, updatedAt: '2026-01-01T00:00:00Z' }]
           : [{ id: 'pr-node', number: 2, updatedAt: '2026-01-01T00:00:00Z' }],
         pageInfo: { hasNextPage: false, endCursor: null },
@@ -125,11 +130,56 @@ describe('GitHub activity loops', () => {
     activity.start()
     await flush()
 
-    expect(client.graphql).toHaveBeenCalledTimes(2)
+    expect(client.graphql).toHaveBeenCalledTimes(3)
     for (const [query] of client.graphql.mock.calls) {
       expect(query).not.toContain('projectItems')
       expect(query).not.toContain('comments(')
     }
+  })
+
+  it('rehydrates unchanged issues whose cached rows predate commenter tracking', async () => {
+    const cached = row('issue', 'issue-node', 1)
+    delete cached.viewerCommented
+    store.rows = [cached]
+    client.graphql.mockImplementation(async (query: string, variables: { q?: string }) => {
+      if (query.includes('x0: repository')) {
+        return {
+          x0: {
+            issue: {
+              id: 'issue-node',
+              number: 1,
+              title: 'Issue',
+              author: { login: 'contributor' },
+              assignees: { nodes: [] },
+              state: 'OPEN',
+              updatedAt: '2026-01-01T00:00:00Z',
+              repository: { nameWithOwner: 'owner/repo' },
+              comments: {
+                totalCount: 1,
+                nodes: [{ author: { login: 'contributor' }, body: 'Any update?' }],
+              },
+              projectItems: { nodes: [] },
+            },
+          },
+        }
+      }
+      return {
+        search: {
+          nodes: variables.q?.includes('commenter:DOsinga')
+            ? [{ id: 'issue-node', number: 1, updatedAt: '2026-01-01T00:00:00Z' }]
+            : variables.q?.startsWith('is:issue')
+            ? [{ id: 'issue-node', number: 1, updatedAt: '2026-01-01T00:00:00Z' }]
+            : [],
+          pageInfo: { hasNextPage: false, endCursor: null },
+        },
+      }
+    })
+
+    activity.start()
+    await flush()
+
+    expect(client.graphql.mock.calls.some(([, variables]) => variables.q?.includes('commenter:DOsinga'))).toBe(true)
+    expect(store.putCachedRows).toHaveBeenCalledWith([expect.objectContaining({ viewerCommented: true })])
   })
 
   it('hydrates a notification timestamp only once even when the feed ETag changes', async () => {
@@ -165,7 +215,9 @@ describe('GitHub activity loops', () => {
       }
       return {
         search: {
-          nodes: variables.q?.startsWith('is:issue')
+          nodes: variables.q?.includes('commenter:')
+            ? []
+            : variables.q?.startsWith('is:issue')
             ? [{ id: 'issue-node', number: 1, updatedAt: '2026-01-01T00:00:00Z' }]
             : [],
           pageInfo: { hasNextPage: false, endCursor: null },
