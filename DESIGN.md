@@ -74,7 +74,7 @@ Workflow states such as `Inbox`, `Needs Information`, `Triaged`, and `Ready` are
 
 The sidebar can filter to one workflow state at a time. This filter combines with the unread, unreplied, and assigned filters.
 
-Unreplied means the signed-in user is an author or commenter in the issue and the latest voice is someone else. Assignment alone does not count as participation. For an issue without comments, its author is the latest voice.
+Unreplied means the signed-in user authored or commented on the issue and the latest voice is someone else. Assignment, mentions, and automated issue activity do not count as participation. For an issue without comments, its author is the latest voice.
 
 Pull requests have separate filters for review requested, assigned, authored, older than seven days, unsolicited contributions, draft/ready state, and review decision. An unsolicited PR is a ready PR from outside the core team with no linked issue or with a linked issue still in Inbox.
 

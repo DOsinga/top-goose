@@ -11,7 +11,7 @@ function issue(overrides: Partial<CachedRow> = {}): CachedRow {
     title: 'Issue',
     author: 'contributor',
     assignees: [],
-    participants: [],
+    viewerCommented: false,
     state: 'open',
     commentCount: 0,
     updatedAt: '2026-01-01T00:00:00Z',
@@ -25,7 +25,7 @@ describe('unreplied issue filter', () => {
     expect(
       isUnreplied(
         issue({
-          participants: ['contributor', 'DOsinga'],
+          viewerCommented: true,
           lastComment: { author: 'contributor', snippet: 'Any update?' },
         }),
         'dosinga',
@@ -38,7 +38,7 @@ describe('unreplied issue filter', () => {
       isUnreplied(
         issue({
           assignees: ['DOsinga'],
-          participants: ['contributor'],
+          viewerCommented: false,
           lastComment: { author: 'contributor', snippet: 'Any update?' },
         }),
         'DOsinga',
@@ -50,7 +50,7 @@ describe('unreplied issue filter', () => {
     expect(
       isUnreplied(
         issue({
-          participants: ['contributor', 'DOsinga'],
+          viewerCommented: true,
           lastComment: { author: 'DOsinga', snippet: 'I will take a look.' },
         }),
         'DOsinga',
@@ -59,9 +59,7 @@ describe('unreplied issue filter', () => {
   })
 
   it('uses the issue author as the latest voice when there are no comments', () => {
-    expect(isUnreplied(issue({ author: 'DOsinga', participants: ['DOsinga'] }), 'DOsinga')).toBe(false)
-    expect(
-      isUnreplied(issue({ author: 'contributor', participants: ['contributor', 'DOsinga'] }), 'DOsinga'),
-    ).toBe(true)
+    expect(isUnreplied(issue({ author: 'DOsinga' }), 'DOsinga')).toBe(false)
+    expect(isUnreplied(issue({ author: 'contributor' }), 'DOsinga')).toBe(false)
   })
 })

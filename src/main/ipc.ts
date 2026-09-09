@@ -172,6 +172,7 @@ export function registerIpc(): void {
     activity.applyLocalEdit(nodeId, {
       commentCount: row.commentCount + 1,
       commentCountAtRead: row.commentCount + 1,
+      viewerCommented: true,
       lastComment: { author: comment.author, snippet: comment.body.replace(/\s+/g, ' ').slice(0, 120) },
       updatedAt: comment.createdAt,
     })

@@ -70,7 +70,7 @@ export type CachedRow = {
   /** issue author login; the "last voice" when there are no comments */
   author?: string
   assignees?: string[]
-  participants?: string[]
+  viewerCommented?: boolean
   state: string
   workflowStatus?: string
   snoozedUntil?: string
