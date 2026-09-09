@@ -61,6 +61,7 @@ function row(kind: 'issue' | 'pullRequest', nodeId: string, number: number): Cac
     commentCount: 0,
     updatedAt: '2026-01-01T00:00:00Z',
     hydratedAt: '2026-01-01T00:00:00Z',
+    participants: kind === 'issue' ? [] : undefined,
     linkedIssues: kind === 'pullRequest' ? [] : undefined,
   }
 }
@@ -130,6 +131,54 @@ describe('GitHub activity loops', () => {
       expect(query).not.toContain('projectItems')
       expect(query).not.toContain('comments(')
     }
+  })
+
+  it('rehydrates unchanged issues whose cached rows predate participant tracking', async () => {
+    const cached = row('issue', 'issue-node', 1)
+    delete cached.participants
+    store.rows = [cached]
+    client.graphql.mockImplementation(async (query: string, variables: { q?: string }) => {
+      if (query.includes('x0: repository')) {
+        return {
+          x0: {
+            issue: {
+              id: 'issue-node',
+              number: 1,
+              title: 'Issue',
+              author: { login: 'contributor' },
+              assignees: { nodes: [] },
+              participants: { nodes: [{ login: 'contributor' }, { login: 'DOsinga' }] },
+              state: 'OPEN',
+              updatedAt: '2026-01-01T00:00:00Z',
+              repository: { nameWithOwner: 'owner/repo' },
+              comments: {
+                totalCount: 1,
+                nodes: [{ author: { login: 'contributor' }, body: 'Any update?' }],
+              },
+              projectItems: { nodes: [] },
+            },
+          },
+        }
+      }
+      return {
+        search: {
+          nodes: variables.q?.startsWith('is:issue')
+            ? [{ id: 'issue-node', number: 1, updatedAt: '2026-01-01T00:00:00Z' }]
+            : [],
+          pageInfo: { hasNextPage: false, endCursor: null },
+        },
+      }
+    })
+
+    activity.start()
+    await flush()
+
+    expect(client.graphql.mock.calls.find(([query]) => query.includes('x0: repository'))?.[0]).toContain(
+      'participants(first: 100)',
+    )
+    expect(store.putCachedRows).toHaveBeenCalledWith([
+      expect.objectContaining({ participants: ['contributor', 'DOsinga'] }),
+    ])
   })
 
   it('hydrates a notification timestamp only once even when the feed ETag changes', async () => {

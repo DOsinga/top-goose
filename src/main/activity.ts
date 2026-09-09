@@ -188,6 +188,7 @@ fragment RowFields on Issue {
   title
   author { login }
   assignees(first: 10) { nodes { login } }
+  participants(first: 100) { nodes { login } }
   state
   updatedAt
   repository { nameWithOwner }
@@ -238,6 +239,7 @@ type GqlIssueRow = {
   title: string
   author: { login: string } | null
   assignees: { nodes: { login: string }[] }
+  participants?: { nodes: { login: string }[] }
   state: string
   updatedAt: string
   repository: { nameWithOwner: string }
@@ -329,6 +331,7 @@ function toRow(issue: GqlIssueRow): CachedRow {
     title: issue.title,
     author: issue.author?.login ?? 'ghost',
     assignees: issue.assignees.nodes.map((a) => a.login),
+    participants: (issue.participants?.nodes ?? []).map((participant) => participant.login),
     state: issue.state.toLowerCase(),
     workflowStatus: fields.status,
     snoozedUntil: fields.snoozedUntil,
@@ -498,6 +501,7 @@ async function reconcile(currentGeneration: number, forceHydration = false): Pro
       forceHydration ||
       !cached ||
       cached.updatedAt !== conversation.updatedAt ||
+      (conversation.kind === 'issue' && !('participants' in cached)) ||
       (conversation.kind === 'pullRequest' && !('linkedIssues' in cached))
     )
   })
