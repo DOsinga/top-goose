@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { isUnsolicitedPullRequest } from '../../../shared/pullRequestFilters'
+import { isUnreplied } from '../../../shared/issueFilters'
 import type { CachedRow, ConversationKind } from '../../../shared/types'
 import {
   useStore,
@@ -14,11 +15,6 @@ function unreadCount(row: CachedRow): number {
   if (row.commentCountAtRead === undefined) return row.unread ? -1 : 0
   const count = Math.max(0, row.commentCount - row.commentCountAtRead)
   return count || (row.unread ? -1 : 0)
-}
-
-function isUnreplied(row: CachedRow, login?: string): boolean {
-  const lastVoice = row.lastComment?.author ?? row.author
-  return lastVoice?.toLowerCase() !== login?.toLowerCase()
 }
 
 function timeAgo(iso: string): string {
