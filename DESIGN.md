@@ -4,7 +4,7 @@ Top Goose is a desktop app for working with GitHub issues and pull requests as c
 
 The core UI looks more like Slack than GitHub:
 
-- Left: issues, pull requests, or Goose sessions as channels
+- Left: issues, pull requests, or Goose conversations as channels
 - Center: the GitHub discussion
 - Top: issue or pull request metadata
 - Right: a private Goose conversation scoped to the current GitHub conversation
@@ -49,7 +49,7 @@ The mockup is illustrative rather than exact and labels the right pane "AI Side 
 
 ### Left Pane
 
-A Slack-like list of GitHub conversations, sorted by most recent update rather than grouped by workflow state. A centered segmented control switches between issues, pull requests, and Goose sessions.
+A Slack-like list of GitHub conversations, sorted by most recent update rather than grouped by workflow state. A centered segmented control switches between Issues, Pull requests, and Goose.
 
 Sources can include:
 
@@ -82,7 +82,7 @@ Search uses GitHub's issue and pull request search, scoped to the configured rep
 
 Conversation selection has browser-style history across both views. `⌘[` opens the previous issue or pull request and `⌘]` moves forward. Opening a new conversation after going back replaces the forward branch.
 
-The Sessions view lists persistent Goose sessions for open, unsnoozed issues and open pull requests in the configured repository, newest Goose activity first. Selecting one opens its issue or pull request and resumes the same private conversation while leaving the Sessions list visible. Merely viewing an item does not create a session; it appears here after the first Goose prompt creates one.
+The Goose view lists persistent Goose sessions for open, unsnoozed issues and open pull requests in the configured repository, newest Goose activity first. Selecting one opens its issue or pull request and resumes the same private conversation while leaving the Goose list visible. Merely viewing an item does not create a session; it appears here after the first Goose prompt creates one.
 
 This matters for the API design: Projects V2 fields exist only in GraphQL. There is no REST equivalent. Any view that shows workflow state, including the sidebar, requires a GraphQL read.
 

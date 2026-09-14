@@ -12,7 +12,7 @@ export function SessionSidebar(): React.JSX.Element {
   return (
     <div className="flex w-72 shrink-0 flex-col border-r border-gray-200 bg-gray-50">
       <div className="flex h-[45px] shrink-0 items-center border-b border-gray-200 px-3">
-        <span className="text-xs font-medium text-gray-700">Goose sessions</span>
+        <span className="text-xs font-medium text-gray-700">Goose</span>
         <span className="ml-1 text-[11px] text-gray-400">{rows.length}</span>
         <button
           type="button"

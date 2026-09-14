@@ -63,7 +63,7 @@ function TitleBar(): React.JSX.Element {
         {([
           ['issue', 'Issues'],
           ['pullRequest', 'Pull requests'],
-          ['sessions', 'Sessions'],
+          ['sessions', 'Goose'],
         ] as const).map(([value, label]) => (
           <button
             key={value}
