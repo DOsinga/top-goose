@@ -268,7 +268,7 @@ export async function promptIssue(issueNodeId: string, text: string): Promise<vo
     const result = await acp.prompt(mapping.sessionId, prompt)
     // the prompt was accepted (even a cancelled turn saw the context), so
     // the synchronization cursor advances now and not before
-    saveIssueSession({ ...mapping, ...sync.cursors })
+    saveIssueSession({ ...mapping, ...sync.cursors, lastUsedAt: new Date().toISOString() })
     emit({ type: 'turn-end', issueNodeId, stopReason: result.stopReason })
   } catch (err) {
     emit({ type: 'error', issueNodeId, message: message(err) })
@@ -318,6 +318,7 @@ async function ensureSession(issueNodeId: string, live: LiveSession): Promise<Is
 
   const sessionId = await acp.newSession(cwd, [])
   await attachDraftServer(sessionId, issueNodeId, cwd)
+  const now = new Date().toISOString()
   const mapping: IssueSession = {
     issueNodeId,
     kind: row.kind,
@@ -326,6 +327,9 @@ async function ensureSession(issueNodeId: string, live: LiveSession): Promise<Is
     repo: row.repo,
     issueNumber: row.issueNumber,
     sessionId,
+    title: row.title,
+    createdAt: now,
+    lastUsedAt: now,
     worktreePath,
   }
   saveIssueSession(mapping)

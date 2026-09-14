@@ -10,6 +10,8 @@ import type {
   PendingDraft,
   PullRequestDetail,
   RateBudget,
+  SessionHistoryRow,
+  SidebarView,
 } from '../../shared/types'
 
 const api = window.topGoose
@@ -35,12 +37,16 @@ type GooseChat = {
 export type SidebarFilter = 'unread' | 'unreplied' | 'assigned'
 export type PullRequestFilter = 'reviewRequested' | 'assigned' | 'authored' | 'olderThan7Days' | 'unsolicited'
 export type PullRequestStateFilter = 'ready' | 'draft' | 'approved' | 'changesRequested' | 'reviewRequired'
-type NavigationEntry = { kind: ConversationKind; nodeId: string }
+type NavigationEntry = { kind: ConversationKind; nodeId: string; sidebarView: SidebarView }
 
 export type State = {
   auth: AuthState | null
   rows: CachedRow[]
   conversationKind: ConversationKind
+  sidebarView: SidebarView
+  sessionRows: SessionHistoryRow[]
+  sessionRowsLoading: boolean
+  sessionRowsError: string | null
   /** active filters combine with AND; none active shows everything */
   sidebarFilters: SidebarFilter[]
   workflowStatusFilter: string | null
@@ -66,8 +72,10 @@ export type State = {
   navigationIndex: number
 
   init: () => () => void
-  selectIssue: (nodeId: string, recordHistory?: boolean) => Promise<void>
-  selectPullRequest: (nodeId: string, recordHistory?: boolean) => Promise<void>
+  selectIssue: (nodeId: string, recordHistory?: boolean, sidebarView?: SidebarView) => Promise<void>
+  selectPullRequest: (nodeId: string, recordHistory?: boolean, sidebarView?: SidebarView) => Promise<void>
+  selectSession: (row: SessionHistoryRow) => Promise<void>
+  loadSessionHistory: () => Promise<void>
   goBack: () => Promise<void>
   goForward: () => Promise<void>
   refreshIssue: () => Promise<void>
@@ -89,7 +97,7 @@ export type State = {
   setAuth: (auth: AuthState) => void
   toggleSidebarFilter: (filter: SidebarFilter) => void
   setWorkflowStatusFilter: (status: string | null) => void
-  setConversationKind: (kind: ConversationKind) => void
+  setSidebarView: (view: SidebarView) => void
   togglePullRequestFilter: (filter: PullRequestFilter) => void
   setPullRequestStateFilter: (filter: PullRequestStateFilter | null) => void
 }
@@ -111,6 +119,10 @@ export const useStore = create<State>((set, get) => ({
   auth: null,
   rows: [],
   conversationKind: 'issue',
+  sidebarView: 'issue',
+  sessionRows: [],
+  sessionRowsLoading: false,
+  sessionRowsError: null,
   sidebarFilters: [],
   workflowStatusFilter: null,
   pullRequestFilters: [],
@@ -152,6 +164,10 @@ export const useStore = create<State>((set, get) => ({
         set((state) => ({
           rows: [],
           conversationKind: 'issue',
+          sidebarView: 'issue',
+          sessionRows: [],
+          sessionRowsLoading: false,
+          sessionRowsError: null,
           workflowStatusFilter: null,
           pullRequestFilters: [],
           pullRequestStateFilter: null,
@@ -191,11 +207,12 @@ export const useStore = create<State>((set, get) => ({
     return () => unsubscribers.forEach((u) => u())
   },
 
-  selectIssue: async (nodeId, recordHistory = true) => {
+  selectIssue: async (nodeId, recordHistory = true, sidebarView = 'issue') => {
     const generation = get().generation
     set((state) => ({
-      ...navigationUpdate(state, { kind: 'issue', nodeId }, recordHistory),
+      ...navigationUpdate(state, { kind: 'issue', nodeId, sidebarView }, recordHistory),
       conversationKind: 'issue',
+      sidebarView,
       selectedNodeId: nodeId,
       issue: null,
       pullRequest: null,
@@ -269,11 +286,12 @@ export const useStore = create<State>((set, get) => ({
     if (pending && get().generation === generation) applyDraft(set, get, nodeId, pending.text)
   },
 
-  selectPullRequest: async (nodeId, recordHistory = true) => {
+  selectPullRequest: async (nodeId, recordHistory = true, sidebarView = 'pullRequest') => {
     const generation = get().generation
     set((state) => ({
-      ...navigationUpdate(state, { kind: 'pullRequest', nodeId }, recordHistory),
+      ...navigationUpdate(state, { kind: 'pullRequest', nodeId, sidebarView }, recordHistory),
       conversationKind: 'pullRequest',
+      sidebarView,
       selectedNodeId: nodeId,
       issue: null,
       pullRequest: null,
@@ -351,14 +369,36 @@ export const useStore = create<State>((set, get) => ({
     if (pending && get().generation === generation) applyDraft(set, get, nodeId, pending.text)
   },
 
+  selectSession: async (row) => {
+    if (row.kind === 'issue') await get().selectIssue(row.nodeId, true, 'sessions')
+    else await get().selectPullRequest(row.nodeId, true, 'sessions')
+  },
+
+  loadSessionHistory: async () => {
+    if (get().sessionRowsLoading) return
+    const generation = get().generation
+    set({ sessionRowsLoading: true, sessionRowsError: null })
+    try {
+      const sessionRows = await api.invoke('session:list')
+      if (get().generation === generation) set({ sessionRows, sessionRowsLoading: false })
+    } catch (err) {
+      if (get().generation === generation) {
+        set({
+          sessionRowsLoading: false,
+          sessionRowsError: err instanceof Error ? err.message : String(err),
+        })
+      }
+    }
+  },
+
   goBack: async () => {
     const { navigationHistory, navigationIndex } = get()
     if (navigationIndex <= 0) return
     const nextIndex = navigationIndex - 1
     const target = navigationHistory[nextIndex]
     set({ navigationIndex: nextIndex })
-    if (target.kind === 'issue') await get().selectIssue(target.nodeId, false)
-    else await get().selectPullRequest(target.nodeId, false)
+    if (target.kind === 'issue') await get().selectIssue(target.nodeId, false, target.sidebarView)
+    else await get().selectPullRequest(target.nodeId, false, target.sidebarView)
   },
 
   goForward: async () => {
@@ -367,8 +407,8 @@ export const useStore = create<State>((set, get) => ({
     const nextIndex = navigationIndex + 1
     const target = navigationHistory[nextIndex]
     set({ navigationIndex: nextIndex })
-    if (target.kind === 'issue') await get().selectIssue(target.nodeId, false)
-    else await get().selectPullRequest(target.nodeId, false)
+    if (target.kind === 'issue') await get().selectIssue(target.nodeId, false, target.sidebarView)
+    else await get().selectPullRequest(target.nodeId, false, target.sidebarView)
   },
 
   refreshIssue: async () => {
@@ -671,6 +711,7 @@ export const useStore = create<State>((set, get) => ({
           },
         }
       })
+      if (get().sidebarView === 'sessions') void get().loadSessionHistory()
     }
   },
 
@@ -691,6 +732,10 @@ export const useStore = create<State>((set, get) => ({
         auth,
         rows: [],
         conversationKind: 'issue',
+        sidebarView: 'issue',
+        sessionRows: [],
+        sessionRowsLoading: false,
+        sessionRowsError: null,
         workflowStatusFilter: null,
         pullRequestFilters: [],
         pullRequestStateFilter: null,
@@ -717,10 +762,16 @@ export const useStore = create<State>((set, get) => ({
         : [...s.sidebarFilters, filter],
     })),
   setWorkflowStatusFilter: (workflowStatusFilter) => set({ workflowStatusFilter }),
-  setConversationKind: (conversationKind) => {
-    if (get().conversationKind === conversationKind) return
+  setSidebarView: (sidebarView) => {
+    if (sidebarView === 'sessions') {
+      set({ sidebarView })
+      if (!get().sessionRowsLoading) void get().loadSessionHistory()
+      return
+    }
+    if (get().sidebarView === sidebarView && get().conversationKind === sidebarView) return
     set({
-      conversationKind,
+      sidebarView,
+      conversationKind: sidebarView,
       selectedNodeId: null,
       issue: null,
       pullRequest: null,
@@ -746,7 +797,13 @@ function navigationUpdate(
 ): Partial<Pick<State, 'navigationHistory' | 'navigationIndex'>> {
   if (!recordHistory) return {}
   const current = state.navigationHistory[state.navigationIndex]
-  if (current?.kind === target.kind && current.nodeId === target.nodeId) return {}
+  if (
+    current?.kind === target.kind &&
+    current.nodeId === target.nodeId &&
+    current.sidebarView === target.sidebarView
+  ) {
+    return {}
+  }
   const navigationHistory = [...state.navigationHistory.slice(0, state.navigationIndex + 1), target]
   return { navigationHistory, navigationIndex: navigationHistory.length - 1 }
 }

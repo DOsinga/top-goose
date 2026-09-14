@@ -4,7 +4,7 @@ Top Goose is a desktop app for working with GitHub issues and pull requests as c
 
 The core UI looks more like Slack than GitHub:
 
-- Left: issues or pull requests as channels
+- Left: issues, pull requests, or Goose sessions as channels
 - Center: the GitHub discussion
 - Top: issue or pull request metadata
 - Right: a private Goose conversation scoped to the current GitHub conversation
@@ -49,7 +49,7 @@ The mockup is illustrative rather than exact and labels the right pane "AI Side 
 
 ### Left Pane
 
-A Slack-like list of GitHub conversations, sorted by most recent update rather than grouped by workflow state. A centered segmented control switches between issues and pull requests.
+A Slack-like list of GitHub conversations, sorted by most recent update rather than grouped by workflow state. A centered segmented control switches between issues, pull requests, and Goose sessions.
 
 Sources can include:
 
@@ -81,6 +81,8 @@ Pull requests have separate filters for review requested, assigned, authored, ol
 Search uses GitHub's issue and pull request search, scoped to the configured repository. Results can include closed conversations and anything else outside the open-item index. Selecting a result switches to the matching issue or pull request view and opens the normal detail and persistent Goose panes without adding the result to the regular sidebar list.
 
 Conversation selection has browser-style history across both views. `⌘[` opens the previous issue or pull request and `⌘]` moves forward. Opening a new conversation after going back replaces the forward branch.
+
+The Sessions view lists every persistent Goose session for the signed-in account and configured repository, newest Goose activity first. Selecting one opens its issue or pull request and resumes the same private conversation while leaving the Sessions list visible. It includes closed conversations and sessions whose GitHub item is no longer in the open-item index. Merely viewing an item does not create a session; it appears here after the first Goose prompt creates one.
 
 This matters for the API design: Projects V2 fields exist only in GraphQL. There is no REST equivalent. Any view that shows workflow state, including the sidebar, requires a GraphQL read.
 
@@ -301,6 +303,9 @@ type IssueSession = {
   repo: string          // denormalized, for display and debugging
   issueNumber: number   // denormalized
   sessionId: string
+  title?: string
+  createdAt?: string
+  lastUsedAt?: string
   lastSyncedCommentId?: number
   lastSyncedIssueUpdatedAt?: string
   lastSyncedCommentCount?: number
@@ -308,6 +313,8 @@ type IssueSession = {
 ```
 
 The key is the GitHub node ID, not `repo` plus number. Repository transfers and renames change both of those. Keying on the node ID avoids silently orphaning sessions later. `host` and `account` are included so a GHES instance or a second account cannot collide.
+
+The optional title and timestamps support the Sessions view. Existing mappings are backfilled from GitHub and Goose session metadata when the view first loads.
 
 The sidebar cache is derived and disposable. It exists so that hydration only pays for what changed, and so the app paints instantly on launch:
 

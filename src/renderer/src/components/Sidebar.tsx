@@ -2,12 +2,14 @@ import { useEffect, useState } from 'react'
 import { isUnsolicitedPullRequest } from '../../../shared/pullRequestFilters'
 import { isUnreplied } from '../../../shared/issueFilters'
 import type { CachedRow, ConversationKind } from '../../../shared/types'
+import { timeAgo } from '../time'
 import {
   useStore,
   type PullRequestFilter,
   type PullRequestStateFilter,
   type SidebarFilter,
 } from '../store'
+import { SessionSidebar } from './SessionSidebar'
 
 const NO_BOARD_STATUS = '__no_board_status__'
 
@@ -17,20 +19,16 @@ function unreadCount(row: CachedRow): number {
   return count || (row.unread ? -1 : 0)
 }
 
-function timeAgo(iso: string): string {
-  const seconds = (Date.now() - new Date(iso).getTime()) / 1000
-  if (seconds < 60) return 'now'
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m`
-  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h`
-  return `${Math.floor(seconds / 86400)}d`
-}
-
 function includesLogin(values: string[] | undefined, login?: string): boolean {
   return !!login && !!values?.some((value) => value.toLowerCase() === login.toLowerCase())
 }
 
 export function Sidebar(): React.JSX.Element {
-  const kind = useStore((state) => state.conversationKind)
+  const view = useStore((state) => state.sidebarView)
+  return view === 'sessions' ? <SessionSidebar /> : <ConversationSidebar kind={view} />
+}
+
+function ConversationSidebar({ kind }: { kind: ConversationKind }): React.JSX.Element {
   const rows = useStore((state) => state.rows).filter((row) => row.kind === kind)
   const selected = useStore((state) => state.selectedNodeId)
   const selectIssue = useStore((state) => state.selectIssue)

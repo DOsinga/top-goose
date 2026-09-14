@@ -58,6 +58,13 @@ export type McpHttpServer = {
 
 export type SessionUpdateHandler = (sessionId: string, update: SessionUpdate) => void
 
+export type AcpSessionInfo = {
+  sessionId: string
+  title?: string | null
+  updatedAt?: string | null
+  _meta?: { createdAt?: string }
+}
+
 const PERMISSION_ALLOW = { outcome: { outcome: 'selected', optionId: 'allow_once' } }
 
 export class AcpClient {
@@ -68,6 +75,7 @@ export class AcpClient {
   private startPromise: Promise<void> | null = null
   /** while loading a session, its replayed history accumulates here */
   private replayBuffers = new Map<string, SessionUpdate[]>()
+  private canGetSessionInfo = true
 
   onSessionUpdate(handler: SessionUpdateHandler): void {
     this.updateHandler = handler
@@ -245,6 +253,19 @@ export class AcpClient {
       { sessionId, prompt: [{ type: 'text', text }] },
       0, // a turn may legitimately run for many minutes
     )
+  }
+
+  async sessionInfo(sessionId: string): Promise<AcpSessionInfo | null> {
+    if (!this.canGetSessionInfo) return null
+    try {
+      const result = await this.request<{ session: AcpSessionInfo }>('_goose/unstable/session/info', {
+        sessionId,
+      })
+      return result.session
+    } catch (err) {
+      if (err instanceof AcpError && err.code === -32601) this.canGetSessionInfo = false
+      return null
+    }
   }
 
   cancel(sessionId: string): void {

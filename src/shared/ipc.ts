@@ -11,6 +11,7 @@ import type {
   ProjectSummary,
   RateBudget,
   RepoConfig,
+  SessionHistoryRow,
   Settings,
 } from './types'
 
@@ -59,6 +60,7 @@ export type InvokeMap = {
   'board:listFields': (projectId: string) => ProjectField[]
 
   // goose sessions
+  'session:list': () => SessionHistoryRow[]
   'session:open': (issueNodeId: string) => GooseSessionView
   'session:prompt': (issueNodeId: string, text: string) => void
   'session:cancel': (issueNodeId: string) => void

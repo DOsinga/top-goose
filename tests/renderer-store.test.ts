@@ -70,6 +70,10 @@ beforeEach(() => {
   useStore.setState({
     rows: [],
     conversationKind: 'issue',
+    sidebarView: 'issue',
+    sessionRows: [],
+    sessionRowsLoading: false,
+    sessionRowsError: null,
     pullRequestFilters: [],
     pullRequestStateFilter: null,
     workflowStatusFilter: null,
@@ -140,10 +144,54 @@ describe('conversation history', () => {
     await useStore.getState().goForward()
 
     expect(useStore.getState().navigationHistory).toEqual([
-      { kind: 'issue', nodeId: 'A' },
-      { kind: 'issue', nodeId: 'C' },
+      { kind: 'issue', nodeId: 'A', sidebarView: 'issue' },
+      { kind: 'issue', nodeId: 'C', sidebarView: 'issue' },
     ])
     expect(useStore.getState().selectedNodeId).toBe('C')
+  })
+
+  it('restores the sidebar where each conversation was opened', async () => {
+    await useStore.getState().selectIssue('A')
+    await useStore.getState().selectSession({
+      kind: 'pullRequest',
+      repo: 'owner/repo',
+      issueNumber: 2,
+      nodeId: 'B',
+      title: 'Pull request 2',
+      lastUsedAt: '2026-01-02T00:00:00Z',
+    })
+
+    expect(useStore.getState().sidebarView).toBe('sessions')
+    await useStore.getState().goBack()
+    expect(useStore.getState().sidebarView).toBe('issue')
+    await useStore.getState().goForward()
+    expect(useStore.getState().sidebarView).toBe('sessions')
+  })
+})
+
+describe('Goose session list', () => {
+  it('loads sessions when its sidebar tab opens', async () => {
+    const session = {
+      kind: 'issue' as const,
+      repo: 'owner/repo',
+      issueNumber: 1,
+      nodeId: 'A',
+      title: 'Issue 1',
+      lastUsedAt: '2026-01-02T00:00:00Z',
+    }
+    invoke.mockImplementation((channel: string) =>
+      channel === 'session:list' ? Promise.resolve([session]) : Promise.resolve(),
+    )
+
+    useStore.getState().setSidebarView('sessions')
+    await Promise.resolve()
+
+    expect(invoke).toHaveBeenCalledWith('session:list')
+    expect(useStore.getState()).toMatchObject({
+      sidebarView: 'sessions',
+      sessionRows: [session],
+      sessionRowsLoading: false,
+    })
   })
 })
 

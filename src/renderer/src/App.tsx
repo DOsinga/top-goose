@@ -50,8 +50,8 @@ function TitleBar(): React.JSX.Element {
   const setView = useStore((s) => s.setView)
   const auth = useStore((s) => s.auth)
   const budget = useStore((s) => s.budget)
-  const conversationKind = useStore((s) => s.conversationKind)
-  const setConversationKind = useStore((s) => s.setConversationKind)
+  const sidebarView = useStore((s) => s.sidebarView)
+  const setSidebarView = useStore((s) => s.setSidebarView)
 
   return (
     <div className="titlebar-drag flex h-11 shrink-0 items-center border-b border-gray-200 bg-gray-50 pl-20 pr-3">
@@ -63,15 +63,16 @@ function TitleBar(): React.JSX.Element {
         {([
           ['issue', 'Issues'],
           ['pullRequest', 'Pull requests'],
+          ['sessions', 'Sessions'],
         ] as const).map(([value, label]) => (
           <button
             key={value}
             className={`rounded-md px-3 py-1 text-xs font-medium ${
-              conversationKind === value
+              sidebarView === value
                 ? 'bg-white text-gray-900 shadow-sm'
                 : 'text-gray-500 hover:text-gray-800'
             }`}
-            onClick={() => setConversationKind(value)}
+            onClick={() => setSidebarView(value)}
           >
             {label}
           </button>
