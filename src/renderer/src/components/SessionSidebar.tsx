@@ -1,3 +1,4 @@
+import type { SessionHistoryRow } from '../../../shared/types'
 import { useStore } from '../store'
 import { timeAgo } from '../time'
 
@@ -6,8 +7,6 @@ export function SessionSidebar(): React.JSX.Element {
   const loading = useStore((state) => state.sessionRowsLoading)
   const error = useStore((state) => state.sessionRowsError)
   const selected = useStore((state) => state.selectedNodeId)
-  const gooseChats = useStore((state) => state.gooseChats)
-  const selectSession = useStore((state) => state.selectSession)
   const load = useStore((state) => state.loadSessionHistory)
 
   return (
@@ -31,32 +30,34 @@ export function SessionSidebar(): React.JSX.Element {
         {!loading && !error && rows.length === 0 && (
           <div className="p-4 text-sm text-gray-500">No Goose sessions yet.</div>
         )}
-        {rows.map((row) => {
-          const busy = gooseChats[row.nodeId]?.busy
-          return (
-            <button
-              key={row.nodeId}
-              type="button"
-              className={`block w-full border-b border-gray-100 px-3 py-2 text-left ${
-                selected === row.nodeId ? 'bg-accent/10' : 'hover:bg-gray-100'
-              }`}
-              onClick={() => void selectSession(row)}
-            >
-              <div className="flex items-baseline gap-2">
-                <span className="min-w-0 flex-1 truncate text-[13px]">{row.title}</span>
-                {busy && <span className="animate-pulse text-[11px]">🪿</span>}
-                <span className="shrink-0 text-[11px] text-gray-400">{timeAgo(row.lastUsedAt)}</span>
-              </div>
-              <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-gray-500">
-                <span className="rounded bg-gray-200 px-1 py-px">
-                  {row.kind === 'issue' ? 'issue' : 'PR'} #{row.issueNumber}
-                </span>
-                <span className="truncate">{row.repo}</span>
-              </div>
-            </button>
-          )
-        })}
+        {rows.map((row) => <SessionRow key={row.nodeId} row={row} selected={selected === row.nodeId} />)}
       </div>
     </div>
+  )
+}
+
+function SessionRow({ row, selected }: { row: SessionHistoryRow; selected: boolean }): React.JSX.Element {
+  const busy = useStore((state) => state.gooseChats[row.nodeId]?.busy)
+  const selectSession = useStore((state) => state.selectSession)
+  return (
+    <button
+      type="button"
+      className={`block w-full border-b border-gray-100 px-3 py-2 text-left ${
+        selected ? 'bg-accent/10' : 'hover:bg-gray-100'
+      }`}
+      onClick={() => void selectSession(row)}
+    >
+      <div className="flex items-baseline gap-2">
+        <span className="min-w-0 flex-1 truncate text-[13px]">{row.title}</span>
+        {busy && <span className="animate-pulse text-[11px]">🪿</span>}
+        <span className="shrink-0 text-[11px] text-gray-400">{timeAgo(row.lastUsedAt)}</span>
+      </div>
+      <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-gray-500">
+        <span className="rounded bg-gray-200 px-1 py-px">
+          {row.kind === 'issue' ? 'issue' : 'PR'} #{row.issueNumber}
+        </span>
+        <span className="truncate">{row.repo}</span>
+      </div>
+    </button>
   )
 }

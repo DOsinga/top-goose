@@ -60,7 +60,6 @@ export type SessionUpdateHandler = (sessionId: string, update: SessionUpdate) =>
 
 export type AcpSessionInfo = {
   sessionId: string
-  title?: string | null
   updatedAt?: string | null
   _meta?: { createdAt?: string }
 }

@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { codexReviewPrompt, extractCodexReviewHeading, type CodexReviewHeading } from '../codexReview'
@@ -64,19 +65,25 @@ function remarkIssueRefs({ repo }: { repo?: string }) {
   }
 }
 
-export function Markdown({ children, offerToGoose = false }: { children: string; offerToGoose?: boolean }): React.JSX.Element {
+export const Markdown = memo(function Markdown({
+  children,
+  offerToGoose = false,
+}: {
+  children: string
+  offerToGoose?: boolean
+}): React.JSX.Element {
   const repo = useStore(
     (s) =>
       s.issue?.repo ?? s.pullRequest?.repo ?? s.rows.find((r) => r.nodeId === s.selectedNodeId)?.repo,
   )
   const selected = useStore((state) => state.selectedNodeId)
-  const gooseInput = useStore((state) => (selected ? state.gooseInputs[selected] ?? '' : ''))
   const setGooseInput = useStore((state) => state.setGooseInput)
   const reviewHeading = extractCodexReviewHeading(children)
   const copyToGoose =
     offerToGoose && selected && reviewHeading
       ? () => {
           const prompt = codexReviewPrompt(reviewHeading)
+          const gooseInput = useStore.getState().gooseInputs[selected] ?? ''
           setGooseInput(selected, gooseInput.trim() ? `${gooseInput}\n\n${prompt}` : prompt)
         }
       : undefined
@@ -88,7 +95,7 @@ export function Markdown({ children, offerToGoose = false }: { children: string;
       </ReactMarkdown>
     </div>
   )
-}
+})
 
 const priorityClasses: Record<CodexReviewHeading['priority'], string> = {
   P0: 'border-red-200 bg-red-50 text-red-800',

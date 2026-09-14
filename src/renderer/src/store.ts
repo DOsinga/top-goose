@@ -157,7 +157,10 @@ export const useStore = create<State>((set, get) => ({
     // StrictMode mounts effects twice in dev; return a cleanup so listeners
     // never stack (a doubled push:goose listener doubles every stream chunk)
     const unsubscribers = [
-      api.on('push:sidebar', (rows) => set({ rows: sortRows(rows) })),
+      api.on('push:sidebar', (rows) => {
+        set({ rows: sortRows(rows) })
+        if (get().sidebarView === 'sessions') void get().loadSessionHistory()
+      }),
       api.on('push:budget', (budget) => set({ budget })),
       api.on('push:auth', (auth) => get().setAuth(auth)),
       api.on('push:reset', () =>
