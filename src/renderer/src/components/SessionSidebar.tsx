@@ -1,5 +1,6 @@
 import { matchesAttentionFilter } from '../../../shared/issueFilters'
 import type { SessionHistoryRow } from '../../../shared/types'
+import { conversationUrl, shouldNavigateInside } from '../internalLinks'
 import { useStore, type SidebarFilter } from '../store'
 import { timeAgo } from '../time'
 
@@ -85,12 +86,18 @@ function SessionRow({ row, selected }: { row: SessionHistoryRow; selected: boole
   const busy = useStore((state) => state.gooseChats[row.nodeId]?.busy)
   const selectSession = useStore((state) => state.selectSession)
   return (
-    <button
-      type="button"
+    <a
+      href={conversationUrl(row)}
+      target="_blank"
+      rel="noreferrer"
       className={`block w-full border-b border-gray-100 px-3 py-2 text-left ${
         selected ? 'bg-accent/10' : 'hover:bg-gray-100'
       }`}
-      onClick={() => void selectSession(row)}
+      onClick={(event) => {
+        if (!shouldNavigateInside(event)) return
+        event.preventDefault()
+        void selectSession(row)
+      }}
     >
       <div className="flex items-baseline gap-2">
         <span className="min-w-0 flex-1 truncate text-[13px]">{row.title}</span>
@@ -103,6 +110,6 @@ function SessionRow({ row, selected }: { row: SessionHistoryRow; selected: boole
         </span>
         <span className="truncate">{row.repo}</span>
       </div>
-    </button>
+    </a>
   )
 }

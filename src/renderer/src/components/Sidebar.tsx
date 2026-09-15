@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { isUnsolicitedPullRequest } from '../../../shared/pullRequestFilters'
 import { includesLogin, matchesAttentionFilter, unreadCount } from '../../../shared/issueFilters'
 import type { CachedRow, ConversationKind } from '../../../shared/types'
+import { conversationUrl, shouldNavigateInside } from '../internalLinks'
 import { timeAgo } from '../time'
 import {
   useStore,
@@ -158,12 +159,19 @@ function SearchResults({
   return (
     <>
       {rows.map((row) => (
-        <button
+        <a
           key={row.nodeId}
+          href={conversationUrl(row)}
+          target="_blank"
+          rel="noreferrer"
           className={`block w-full border-b border-gray-100 px-3 py-2 text-left ${
             selected === row.nodeId ? 'bg-accent/10' : 'hover:bg-gray-100'
           }`}
-          onClick={() => open(row)}
+          onClick={(event) => {
+            if (!shouldNavigateInside(event)) return
+            event.preventDefault()
+            open(row)
+          }}
         >
           <div className="truncate text-[13px] font-medium">{row.title}</div>
           <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-gray-500">
@@ -174,7 +182,7 @@ function SearchResults({
             <span className="truncate">by {row.author}</span>
             <span className="ml-auto shrink-0 text-gray-400">{timeAgo(row.updatedAt)}</span>
           </div>
-        </button>
+        </a>
       ))}
     </>
   )
@@ -375,8 +383,15 @@ function SidebarRow({
   const gooseBusy = useStore((state) => state.gooseChats[row.nodeId]?.busy)
   const snoozed = !!row.snoozedUntil && row.snoozedUntil > new Date().toISOString().slice(0, 10)
   return (
-    <button
-      onClick={onClick}
+    <a
+      href={conversationUrl(row)}
+      target="_blank"
+      rel="noreferrer"
+      onClick={(event) => {
+        if (!shouldNavigateInside(event)) return
+        event.preventDefault()
+        onClick()
+      }}
       className={`block w-full border-b border-gray-100 px-3 py-2 text-left ${
         selected ? 'bg-accent/10' : 'hover:bg-gray-100'
       } ${snoozed ? 'opacity-50' : ''}`}
@@ -403,7 +418,7 @@ function SidebarRow({
           {row.lastComment ? `${row.lastComment.author}: ${row.lastComment.snippet}` : `${row.repo}#${row.issueNumber}`}
         </span>
       </div>
-    </button>
+    </a>
   )
 }
 

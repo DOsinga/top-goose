@@ -82,6 +82,8 @@ Search uses GitHub's issue and pull request search, scoped to the configured rep
 
 Conversation selection has browser-style history across both views. `⌘[` opens the previous issue or pull request and `⌘]` moves forward. Opening a new conversation after going back replaces the forward branch.
 
+Conversation links in the sidebars, search results, and associated issue or pull request chips open inside Top Goose. Command-click opens the same target in the default browser instead.
+
 The Goose view lists persistent Goose sessions for open, unsnoozed issues and open pull requests in the configured repository, newest Goose activity first. The unread, unreplied, and assigned filters use the same rules as the Issues view. Selecting one opens its issue or pull request and resumes the same private conversation while leaving the Goose list visible. Merely viewing an item does not create a session; it appears here after the first Goose prompt creates one.
 
 This matters for the API design: Projects V2 fields exist only in GraphQL. There is no REST equivalent. Any view that shows workflow state, including the sidebar, requires a GraphQL read.
