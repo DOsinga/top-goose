@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isUnreplied } from '../src/shared/issueFilters'
+import { isUnreplied, matchesAttentionFilter } from '../src/shared/issueFilters'
 import type { CachedRow } from '../src/shared/types'
 
 function issue(overrides: Partial<CachedRow> = {}): CachedRow {
@@ -61,5 +61,26 @@ describe('unreplied issue filter', () => {
   it('uses the issue author as the latest voice when there are no comments', () => {
     expect(isUnreplied(issue({ author: 'DOsinga' }), 'DOsinga')).toBe(false)
     expect(isUnreplied(issue({ author: 'contributor' }), 'DOsinga')).toBe(false)
+  })
+})
+
+describe('attention filters', () => {
+  it('matches unread and assigned conversations', () => {
+    const row = issue({
+      assignees: ['DOsinga'],
+      unread: true,
+    })
+
+    expect(matchesAttentionFilter(row, 'unread', 'DOsinga')).toBe(true)
+    expect(matchesAttentionFilter(row, 'assigned', 'dosinga')).toBe(true)
+  })
+
+  it('derives unread state from comments read so far', () => {
+    expect(
+      matchesAttentionFilter(issue({ commentCount: 5, commentCountAtRead: 3 }), 'unread', 'DOsinga'),
+    ).toBe(true)
+    expect(
+      matchesAttentionFilter(issue({ commentCount: 5, commentCountAtRead: 5 }), 'unread', 'DOsinga'),
+    ).toBe(false)
   })
 })

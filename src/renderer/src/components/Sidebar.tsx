@@ -1,36 +1,25 @@
 import { useEffect, useState } from 'react'
 import { isUnsolicitedPullRequest } from '../../../shared/pullRequestFilters'
-import { isUnreplied } from '../../../shared/issueFilters'
+import { includesLogin, matchesAttentionFilter, unreadCount } from '../../../shared/issueFilters'
 import type { CachedRow, ConversationKind } from '../../../shared/types'
+import { conversationUrl, shouldNavigateInside } from '../internalLinks'
+import { timeAgo } from '../time'
 import {
   useStore,
   type PullRequestFilter,
   type PullRequestStateFilter,
   type SidebarFilter,
 } from '../store'
+import { SessionSidebar } from './SessionSidebar'
 
 const NO_BOARD_STATUS = '__no_board_status__'
 
-function unreadCount(row: CachedRow): number {
-  if (row.commentCountAtRead === undefined) return row.unread ? -1 : 0
-  const count = Math.max(0, row.commentCount - row.commentCountAtRead)
-  return count || (row.unread ? -1 : 0)
-}
-
-function timeAgo(iso: string): string {
-  const seconds = (Date.now() - new Date(iso).getTime()) / 1000
-  if (seconds < 60) return 'now'
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m`
-  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h`
-  return `${Math.floor(seconds / 86400)}d`
-}
-
-function includesLogin(values: string[] | undefined, login?: string): boolean {
-  return !!login && !!values?.some((value) => value.toLowerCase() === login.toLowerCase())
-}
-
 export function Sidebar(): React.JSX.Element {
-  const kind = useStore((state) => state.conversationKind)
+  const view = useStore((state) => state.sidebarView)
+  return view === 'sessions' ? <SessionSidebar /> : <ConversationSidebar kind={view} />
+}
+
+function ConversationSidebar({ kind }: { kind: ConversationKind }): React.JSX.Element {
   const rows = useStore((state) => state.rows).filter((row) => row.kind === kind)
   const selected = useStore((state) => state.selectedNodeId)
   const selectIssue = useStore((state) => state.selectIssue)
@@ -170,12 +159,19 @@ function SearchResults({
   return (
     <>
       {rows.map((row) => (
-        <button
+        <a
           key={row.nodeId}
+          href={conversationUrl(row)}
+          target="_blank"
+          rel="noreferrer"
           className={`block w-full border-b border-gray-100 px-3 py-2 text-left ${
             selected === row.nodeId ? 'bg-accent/10' : 'hover:bg-gray-100'
           }`}
-          onClick={() => open(row)}
+          onClick={(event) => {
+            if (!shouldNavigateInside(event)) return
+            event.preventDefault()
+            open(row)
+          }}
         >
           <div className="truncate text-[13px] font-medium">{row.title}</div>
           <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-gray-500">
@@ -186,7 +182,7 @@ function SearchResults({
             <span className="truncate">by {row.author}</span>
             <span className="ml-auto shrink-0 text-gray-400">{timeAgo(row.updatedAt)}</span>
           </div>
-        </button>
+        </a>
       ))}
     </>
   )
@@ -198,11 +194,6 @@ function IssueFilters({ rows }: { rows: CachedRow[] }): React.JSX.Element {
   const statusFilter = useStore((state) => state.workflowStatusFilter)
   const setStatusFilter = useStore((state) => state.setWorkflowStatusFilter)
   const login = useStore((state) => state.auth?.login)
-  const passes: Record<SidebarFilter, (row: CachedRow) => boolean> = {
-    unread: (row) => unreadCount(row) !== 0,
-    unreplied: (row) => isUnreplied(row, login),
-    assigned: (row) => includesLogin(row.assignees, login),
-  }
   const statuses = [...new Set(rows.flatMap((row) => (row.workflowStatus ? [row.workflowStatus] : [])))].sort()
   const statusOptions =
     statusFilter && statusFilter !== NO_BOARD_STATUS && !statuses.includes(statusFilter)
@@ -216,7 +207,7 @@ function IssueFilters({ rows }: { rows: CachedRow[] }): React.JSX.Element {
           <FilterPill
             key={filter}
             label={filter}
-            count={rows.filter(passes[filter]).length}
+            count={rows.filter((row) => matchesAttentionFilter(row, filter, login)).length}
             active={filters.includes(filter)}
             onClick={() => toggleFilter(filter)}
           />
@@ -314,14 +305,9 @@ function filterIssues(
   statusFilter: string | null,
   login?: string,
 ): CachedRow[] {
-  const passes: Record<SidebarFilter, (row: CachedRow) => boolean> = {
-    unread: (row) => unreadCount(row) !== 0,
-    unreplied: (row) => isUnreplied(row, login),
-    assigned: (row) => includesLogin(row.assignees, login),
-  }
   return rows.filter(
     (row) =>
-      filters.every((filter) => passes[filter](row)) &&
+      filters.every((filter) => matchesAttentionFilter(row, filter, login)) &&
       (statusFilter === null ||
         (statusFilter === NO_BOARD_STATUS ? !row.workflowStatus : row.workflowStatus === statusFilter)),
   )
@@ -397,8 +383,15 @@ function SidebarRow({
   const gooseBusy = useStore((state) => state.gooseChats[row.nodeId]?.busy)
   const snoozed = !!row.snoozedUntil && row.snoozedUntil > new Date().toISOString().slice(0, 10)
   return (
-    <button
-      onClick={onClick}
+    <a
+      href={conversationUrl(row)}
+      target="_blank"
+      rel="noreferrer"
+      onClick={(event) => {
+        if (!shouldNavigateInside(event)) return
+        event.preventDefault()
+        onClick()
+      }}
       className={`block w-full border-b border-gray-100 px-3 py-2 text-left ${
         selected ? 'bg-accent/10' : 'hover:bg-gray-100'
       } ${snoozed ? 'opacity-50' : ''}`}
@@ -425,7 +418,7 @@ function SidebarRow({
           {row.lastComment ? `${row.lastComment.author}: ${row.lastComment.snippet}` : `${row.repo}#${row.issueNumber}`}
         </span>
       </div>
-    </button>
+    </a>
   )
 }
 
