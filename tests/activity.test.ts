@@ -62,7 +62,7 @@ function row(kind: 'issue' | 'pullRequest', nodeId: string, number: number): Cac
     commentCount: 0,
     updatedAt: '2026-01-01T00:00:00Z',
     hydratedAt: '2026-01-01T00:00:00Z',
-    viewerCommented: kind === 'issue' ? false : undefined,
+    viewerCommented: false,
     linkedIssues: kind === 'pullRequest' ? [] : undefined,
   }
 }
@@ -130,7 +130,7 @@ describe('GitHub activity loops', () => {
     activity.start()
     await flush()
 
-    expect(client.graphql).toHaveBeenCalledTimes(3)
+    expect(client.graphql).toHaveBeenCalledTimes(4)
     for (const [query] of client.graphql.mock.calls) {
       expect(query).not.toContain('projectItems')
       expect(query).not.toContain('comments(')
@@ -296,6 +296,7 @@ describe('GitHub activity loops', () => {
     expect(store.putCachedRows).toHaveBeenCalledWith([
       expect.objectContaining({
         nodeId: 'pr-node',
+        viewerCommented: true,
         linkedIssues: [{ number: 12, workflowStatus: 'Inbox' }],
       }),
     ])

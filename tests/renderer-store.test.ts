@@ -74,6 +74,8 @@ beforeEach(() => {
     sessionRows: [],
     sessionRowsLoading: false,
     sessionRowsError: null,
+    sidebarFilters: [],
+    gooseFilters: [],
     pullRequestFilters: [],
     pullRequestStateFilter: null,
     workflowStatusFilter: null,

@@ -13,6 +13,7 @@ import type {
   SessionHistoryRow,
   SidebarView,
 } from '../../shared/types'
+import type { AttentionFilter } from '../../shared/issueFilters'
 
 const api = window.topGoose
 
@@ -34,7 +35,7 @@ type GooseChat = {
   loaded: boolean
 }
 
-export type SidebarFilter = 'unread' | 'unreplied' | 'assigned'
+export type SidebarFilter = AttentionFilter
 export type PullRequestFilter = 'reviewRequested' | 'assigned' | 'authored' | 'olderThan7Days' | 'unsolicited'
 export type PullRequestStateFilter = 'ready' | 'draft' | 'approved' | 'changesRequested' | 'reviewRequired'
 type NavigationEntry = { kind: ConversationKind; nodeId: string; sidebarView: SidebarView }
@@ -49,6 +50,7 @@ export type State = {
   sessionRowsError: string | null
   /** active filters combine with AND; none active shows everything */
   sidebarFilters: SidebarFilter[]
+  gooseFilters: SidebarFilter[]
   workflowStatusFilter: string | null
   pullRequestFilters: PullRequestFilter[]
   pullRequestStateFilter: PullRequestStateFilter | null
@@ -96,6 +98,7 @@ export type State = {
   setView: (view: 'main' | 'settings') => void
   setAuth: (auth: AuthState) => void
   toggleSidebarFilter: (filter: SidebarFilter) => void
+  toggleGooseFilter: (filter: SidebarFilter) => void
   setWorkflowStatusFilter: (status: string | null) => void
   setSidebarView: (view: SidebarView) => void
   togglePullRequestFilter: (filter: PullRequestFilter) => void
@@ -124,6 +127,7 @@ export const useStore = create<State>((set, get) => ({
   sessionRowsLoading: false,
   sessionRowsError: null,
   sidebarFilters: [],
+  gooseFilters: [],
   workflowStatusFilter: null,
   pullRequestFilters: [],
   pullRequestStateFilter: null,
@@ -171,6 +175,7 @@ export const useStore = create<State>((set, get) => ({
           sessionRows: [],
           sessionRowsLoading: false,
           sessionRowsError: null,
+          gooseFilters: [],
           workflowStatusFilter: null,
           pullRequestFilters: [],
           pullRequestStateFilter: null,
@@ -739,6 +744,7 @@ export const useStore = create<State>((set, get) => ({
         sessionRows: [],
         sessionRowsLoading: false,
         sessionRowsError: null,
+        gooseFilters: [],
         workflowStatusFilter: null,
         pullRequestFilters: [],
         pullRequestStateFilter: null,
@@ -763,6 +769,12 @@ export const useStore = create<State>((set, get) => ({
       sidebarFilters: s.sidebarFilters.includes(filter)
         ? s.sidebarFilters.filter((f) => f !== filter)
         : [...s.sidebarFilters, filter],
+    })),
+  toggleGooseFilter: (filter) =>
+    set((state) => ({
+      gooseFilters: state.gooseFilters.includes(filter)
+        ? state.gooseFilters.filter((value) => value !== filter)
+        : [...state.gooseFilters, filter],
     })),
   setWorkflowStatusFilter: (workflowStatusFilter) => set({ workflowStatusFilter }),
   setSidebarView: (sidebarView) => {

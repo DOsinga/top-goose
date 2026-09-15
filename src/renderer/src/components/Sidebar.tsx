@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { isUnsolicitedPullRequest } from '../../../shared/pullRequestFilters'
-import { isUnreplied } from '../../../shared/issueFilters'
+import { includesLogin, matchesAttentionFilter, unreadCount } from '../../../shared/issueFilters'
 import type { CachedRow, ConversationKind } from '../../../shared/types'
 import { timeAgo } from '../time'
 import {
@@ -12,16 +12,6 @@ import {
 import { SessionSidebar } from './SessionSidebar'
 
 const NO_BOARD_STATUS = '__no_board_status__'
-
-function unreadCount(row: CachedRow): number {
-  if (row.commentCountAtRead === undefined) return row.unread ? -1 : 0
-  const count = Math.max(0, row.commentCount - row.commentCountAtRead)
-  return count || (row.unread ? -1 : 0)
-}
-
-function includesLogin(values: string[] | undefined, login?: string): boolean {
-  return !!login && !!values?.some((value) => value.toLowerCase() === login.toLowerCase())
-}
 
 export function Sidebar(): React.JSX.Element {
   const view = useStore((state) => state.sidebarView)
@@ -196,11 +186,6 @@ function IssueFilters({ rows }: { rows: CachedRow[] }): React.JSX.Element {
   const statusFilter = useStore((state) => state.workflowStatusFilter)
   const setStatusFilter = useStore((state) => state.setWorkflowStatusFilter)
   const login = useStore((state) => state.auth?.login)
-  const passes: Record<SidebarFilter, (row: CachedRow) => boolean> = {
-    unread: (row) => unreadCount(row) !== 0,
-    unreplied: (row) => isUnreplied(row, login),
-    assigned: (row) => includesLogin(row.assignees, login),
-  }
   const statuses = [...new Set(rows.flatMap((row) => (row.workflowStatus ? [row.workflowStatus] : [])))].sort()
   const statusOptions =
     statusFilter && statusFilter !== NO_BOARD_STATUS && !statuses.includes(statusFilter)
@@ -214,7 +199,7 @@ function IssueFilters({ rows }: { rows: CachedRow[] }): React.JSX.Element {
           <FilterPill
             key={filter}
             label={filter}
-            count={rows.filter(passes[filter]).length}
+            count={rows.filter((row) => matchesAttentionFilter(row, filter, login)).length}
             active={filters.includes(filter)}
             onClick={() => toggleFilter(filter)}
           />
@@ -312,14 +297,9 @@ function filterIssues(
   statusFilter: string | null,
   login?: string,
 ): CachedRow[] {
-  const passes: Record<SidebarFilter, (row: CachedRow) => boolean> = {
-    unread: (row) => unreadCount(row) !== 0,
-    unreplied: (row) => isUnreplied(row, login),
-    assigned: (row) => includesLogin(row.assignees, login),
-  }
   return rows.filter(
     (row) =>
-      filters.every((filter) => passes[filter](row)) &&
+      filters.every((filter) => matchesAttentionFilter(row, filter, login)) &&
       (statusFilter === null ||
         (statusFilter === NO_BOARD_STATUS ? !row.workflowStatus : row.workflowStatus === statusFilter)),
   )
