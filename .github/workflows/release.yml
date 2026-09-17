@@ -53,7 +53,7 @@ jobs:
       - name: Remove notarization key
         if: always()
         run: rm -f "$RUNNER_TEMP/AuthKey.p8"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: Top-Goose-macOS-${{ matrix.arch }}
           path: |
@@ -69,7 +69,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@v8
         with:
           path: artifacts
           merge-multiple: true
