@@ -1,5 +1,7 @@
 # Top Goose
 
+[![Latest release](https://img.shields.io/github/v/release/DOsinga/top-goose?display_name=tag&sort=semver)](https://github.com/DOsinga/top-goose/releases/latest)
+
 GitHub issues and pull requests as conversations, with a private [Goose](https://github.com/block/goose) side-channel attached to each one.
 
 Issue triage usually means a browser tab per issue and no help from your agent. Top Goose turns a repository's issues into something closer to Slack:
