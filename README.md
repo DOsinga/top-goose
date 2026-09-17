@@ -79,4 +79,4 @@ Stack: Electron + electron-vite, React 19, TypeScript, Tailwind v4, zustand, `@m
 
 The Release workflow can also be run by hand to produce downloadable Apple Silicon and Intel artifacts. A tag matching the version in `package.json`, such as `v0.1.0`, builds both and publishes them to a GitHub release.
 
-The app is not yet signed or notarized, so macOS will warn before opening a downloaded build. Signing can be enabled later without changing the release flow.
+Release builds require the `CSC_LINK`, `CSC_KEY_PASSWORD`, `APPLE_API_KEY_BASE64`, `APPLE_API_KEY_ID`, and `APPLE_API_ISSUER` GitHub Actions secrets. Both architectures are signed with a Developer ID Application certificate and notarized by Apple; the workflow fails rather than publishing an unsigned build when signing credentials are unavailable.
