@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { memo, useEffect, useRef } from 'react'
 import type { GooseMessage, GooseToolCall } from '../../../shared/types'
 import { shouldSubmitGoosePrompt } from '../gooseInput'
 import { useStore } from '../store'
@@ -20,10 +20,6 @@ export function GoosePane(): React.JSX.Element {
   const selected = useStore((s) => s.selectedNodeId)
   const kind = useStore((s) => s.conversationKind)
   const chat = useStore((s) => (selected ? s.gooseChats[selected] : undefined))
-  const promptGoose = useStore((s) => s.promptGoose)
-  const cancelGoose = useStore((s) => s.cancelGoose)
-  const input = useStore((s) => (selected ? s.gooseInputs[selected] ?? '' : ''))
-  const setGooseInput = useStore((s) => s.setGooseInput)
   const endRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -32,12 +28,6 @@ export function GoosePane(): React.JSX.Element {
 
   if (!selected) {
     return <div className="w-96 shrink-0 border-l border-gray-200 bg-gray-50" />
-  }
-  const send = (): void => {
-    const text = input.trim()
-    if (!text || !chat?.loaded || chat.noWorkspace || chat.busy) return
-    setGooseInput(selected, '')
-    void promptGoose(selected, text)
   }
 
   return (
@@ -73,43 +63,79 @@ export function GoosePane(): React.JSX.Element {
         <div ref={endRef} />
       </div>
 
-      <div className="shrink-0 border-t border-gray-200 p-3">
-        <textarea
-          className="h-16 w-full resize-none rounded-lg border border-gray-300 p-2 text-[13px] focus:border-goose focus:outline-none"
-          placeholder="Ask Goose… (Enter to send, Shift+Enter for newline)"
-          value={input}
-          disabled={!chat?.loaded || chat.noWorkspace || chat.busy}
-          onChange={(e) => setGooseInput(selected, e.target.value)}
-          onKeyDown={(e) => {
-            if (shouldSubmitGoosePrompt(e.key, e.shiftKey, e.nativeEvent.isComposing)) {
-              e.preventDefault()
-              send()
-            }
-          }}
-        />
-        <div className="mt-1 flex justify-end gap-2">
-          {chat?.busy && (
-            <button
-              className="rounded-lg px-3 py-1 text-[12px] text-gray-600 hover:bg-gray-200"
-              onClick={() => cancelGoose(selected)}
-            >
-              Stop
-            </button>
-          )}
+      <GooseComposer
+        selected={selected}
+        loaded={!!chat?.loaded}
+        noWorkspace={!!chat?.noWorkspace}
+        busy={!!chat?.busy}
+      />
+    </div>
+  )
+}
+
+function GooseComposer({
+  selected,
+  loaded,
+  noWorkspace,
+  busy,
+}: {
+  selected: string
+  loaded: boolean
+  noWorkspace: boolean
+  busy: boolean
+}): React.JSX.Element {
+  const promptGoose = useStore((state) => state.promptGoose)
+  const cancelGoose = useStore((state) => state.cancelGoose)
+  const input = useStore((state) => state.gooseInputs[selected] ?? '')
+  const setGooseInput = useStore((state) => state.setGooseInput)
+  const send = (): void => {
+    const text = input.trim()
+    if (!text || !loaded || noWorkspace || busy) return
+    setGooseInput(selected, '')
+    void promptGoose(selected, text)
+  }
+
+  return (
+    <div className="shrink-0 border-t border-gray-200 p-3">
+      <textarea
+        className="h-16 w-full resize-none rounded-lg border border-gray-300 p-2 text-[13px] focus:border-goose focus:outline-none"
+        placeholder="Ask Goose… (Enter to send, Shift+Enter for newline)"
+        value={input}
+        disabled={!loaded || noWorkspace || busy}
+        onChange={(e) => setGooseInput(selected, e.target.value)}
+        onKeyDown={(e) => {
+          if (shouldSubmitGoosePrompt(e.key, e.shiftKey, e.nativeEvent.isComposing)) {
+            e.preventDefault()
+            send()
+          }
+        }}
+      />
+      <div className="mt-1 flex justify-end gap-2">
+        {busy && (
           <button
-            className="rounded-lg bg-goose px-3 py-1 text-[12px] font-medium text-white disabled:opacity-40"
-            disabled={!chat?.loaded || chat.noWorkspace || !input.trim() || chat.busy}
-            onClick={send}
+            className="rounded-lg px-3 py-1 text-[12px] text-gray-600 hover:bg-gray-200"
+            onClick={() => cancelGoose(selected)}
           >
-            Send
+            Stop
           </button>
-        </div>
+        )}
+        <button
+          className="rounded-lg bg-goose px-3 py-1 text-[12px] font-medium text-white disabled:opacity-40"
+          disabled={!loaded || noWorkspace || !input.trim() || busy}
+          onClick={send}
+        >
+          Send
+        </button>
       </div>
     </div>
   )
 }
 
-function GooseBubble({ message }: { message: GooseMessage }): React.JSX.Element {
+const GooseBubble = memo(function GooseBubble({
+  message,
+}: {
+  message: GooseMessage
+}): React.JSX.Element {
   if (message.role === 'user') {
     return (
       <div className="ml-6 rounded-lg bg-goose/10 px-3 py-2">
@@ -133,7 +159,8 @@ function GooseBubble({ message }: { message: GooseMessage }): React.JSX.Element 
       )}
     </div>
   )
-}
+},
+)
 
 function ToolCallChip({ call }: { call: GooseToolCall }): React.JSX.Element {
   // compact, after-the-fact display: no approval queue in a chat column

@@ -1,0 +1,19 @@
+appId: com.douweosinga.topgoose
+productName: Top Goose
+artifactName: Top-Goose-${version}-${arch}.${ext}
+asar: true
+
+directories:
+  buildResources: resources
+  output: dist
+
+files:
+  - out/**/*
+  - package.json
+
+mac:
+  category: public.app-category.developer-tools
+  icon: top-goose.png
+  target:
+    - dmg
+    - zip

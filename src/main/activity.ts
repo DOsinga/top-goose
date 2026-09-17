@@ -350,7 +350,7 @@ function toRow(issue: GqlIssueRow, viewerCommented?: boolean): CachedRow {
   }
 }
 
-function toPullRequestRow(pullRequest: GqlPullRequestRow): CachedRow {
+function toPullRequestRow(pullRequest: GqlPullRequestRow, viewerCommented?: boolean): CachedRow {
   const last = pullRequest.comments.nodes[0]
   const existing = getCachedRow(pullRequest.id)
   const repo = pullRequest.repository.nameWithOwner
@@ -362,6 +362,7 @@ function toPullRequestRow(pullRequest: GqlPullRequestRow): CachedRow {
     title: pullRequest.title,
     author: pullRequest.author?.login ?? 'ghost',
     assignees: pullRequest.assignees.nodes.map((assignee) => assignee.login),
+    viewerCommented: viewerCommented ?? existing?.viewerCommented,
     state: pullRequest.state.toLowerCase(),
     createdAt: pullRequest.createdAt,
     isDraft: pullRequest.isDraft,
@@ -470,7 +471,7 @@ async function hydratePullRequests(refs: ConversationRef[], currentGeneration: n
         removeCachedRow(pullRequest.id)
         continue
       }
-      const row = toPullRequestRow(pullRequest)
+      const row = toPullRequestRow(pullRequest, batch[i].viewerCommented)
       const threadId = pendingThreadIds.get(refKey(batch[i]))
       if (threadId) {
         threadByNode.set(row.nodeId, threadId)
@@ -505,7 +506,7 @@ async function reconcile(currentGeneration: number, forceHydration = false): Pro
       forceHydration ||
       !cached ||
       cached.updatedAt !== conversation.updatedAt ||
-      (conversation.kind === 'issue' && cached.viewerCommented !== conversation.viewerCommented) ||
+      cached.viewerCommented !== conversation.viewerCommented ||
       (conversation.kind === 'pullRequest' && !('linkedIssues' in cached))
     )
   })
@@ -546,25 +547,8 @@ async function reconcileIssues(configured: string): Promise<DiscoveredConversati
 
   const login = getAuthMeta().login
   if (!login) return conversations
-  const commented = new Set<string>()
-  after = null
-  for (;;) {
-    const data: SearchResult = await graphql<SearchResult>(
-      `query ($q: String!, $after: String) {
-        search(query: $q, type: ISSUE, first: 100, after: $after) {
-          nodes { ... on Issue { id number updatedAt } }
-          pageInfo { hasNextPage endCursor }
-        }
-      }`,
-      { q: `is:issue repo:${configured} state:open commenter:${login}`, after },
-    )
-    for (const node of data.search.nodes) {
-      if ('id' in node) commented.add(node.id)
-    }
-    if (!data.search.pageInfo.hasNextPage) break
-    if (budgetDegraded()) return null
-    after = data.search.pageInfo.endCursor
-  }
+  const commented = await commentedConversationIds(configured, 'issue', login)
+  if (!commented) return null
   return conversations.map((conversation) => ({
     ...conversation,
     viewerCommented: commented.has(conversation.nodeId),
@@ -599,7 +583,49 @@ async function reconcilePullRequests(configured: string): Promise<DiscoveredConv
     if (budgetDegraded()) return null
     after = data.search.pageInfo.endCursor
   }
-  return conversations
+  const login = getAuthMeta().login
+  if (!login) return conversations
+  const commented = await commentedConversationIds(configured, 'pr', login)
+  if (!commented) return null
+  return conversations.map((conversation) => ({
+    ...conversation,
+    viewerCommented: commented.has(conversation.nodeId),
+  }))
+}
+
+async function commentedConversationIds(
+  configured: string,
+  kind: 'issue' | 'pr',
+  login: string,
+): Promise<Set<string> | null> {
+  type SearchResult = {
+    search: {
+      nodes: ({ id: string } | Record<string, never>)[]
+      pageInfo: { hasNextPage: boolean; endCursor: string | null }
+    }
+  }
+  const commented = new Set<string>()
+  let after: string | null = null
+  for (;;) {
+    const data: SearchResult = await graphql<SearchResult>(
+      `query ($q: String!, $after: String) {
+        search(query: $q, type: ISSUE, first: 100, after: $after) {
+          nodes {
+            ... on Issue { id }
+            ... on PullRequest { id }
+          }
+          pageInfo { hasNextPage endCursor }
+        }
+      }`,
+      { q: `is:${kind} repo:${configured} state:open commenter:${login}`, after },
+    )
+    for (const node of data.search.nodes) {
+      if ('id' in node) commented.add(node.id)
+    }
+    if (!data.search.pageInfo.hasNextPage) return commented
+    if (budgetDegraded()) return null
+    after = data.search.pageInfo.endCursor
+  }
 }
 
 // ---------- Read state ----------

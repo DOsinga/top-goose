@@ -87,6 +87,9 @@ export type IssueSession = {
   repo: string
   issueNumber: number
   sessionId: string
+  title?: string
+  createdAt?: string
+  lastUsedAt?: string
   lastSyncedCommentId?: number
   lastSyncedIssueUpdatedAt?: string
   lastSyncedCommentCount?: number
@@ -119,6 +122,23 @@ export function saveIssueSession(session: IssueSession): void {
   sessionStore().update((s) => ({
     sessions: { ...s.sessions, [issueSessionKey(session.host, session.account, session.issueNodeId)]: session },
   }))
+}
+
+export function listIssueSessions(): IssueSession[] {
+  const account = getAuthMeta().login?.toLowerCase()
+  const repo = settings().get().repo?.repo.toLowerCase()
+  if (!account || !repo) return []
+  const byNode = new Map<string, IssueSession>()
+  for (const session of Object.values(sessionStore().get().sessions)) {
+    if (
+      session.host === 'github.com' &&
+      session.account.toLowerCase() === account &&
+      session.repo.toLowerCase() === repo
+    ) {
+      byNode.set(session.issueNodeId, session)
+    }
+  }
+  return [...byNode.values()]
 }
 
 export function issueSessionKey(host: string, account: string, issueNodeId: string): string {

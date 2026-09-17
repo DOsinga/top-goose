@@ -2,12 +2,14 @@
   "name": "top-goose",
   "version": "0.1.0",
   "description": "GitHub issues and pull requests with a private Goose side-channel",
+  "author": "Douwe Osinga",
   "main": "out/main/index.js",
   "type": "module",
   "private": true,
   "scripts": {
     "dev": "electron-vite dev --watch",
     "build": "electron-vite build",
+    "package:mac": "npm run build && electron-builder --mac --publish never",
     "start": "electron-vite preview",
     "test": "vitest run",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json"
@@ -19,6 +21,7 @@
     "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "^5.2.0",
     "electron": "^43.4.1",
+    "electron-builder": "^26.15.3",
     "electron-vite": "^5.0.0",
     "tailwindcss": "^4.3.3",
     "typescript": "^7.0.2",

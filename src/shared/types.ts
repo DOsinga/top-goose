@@ -50,6 +50,16 @@ export type AuthState = {
 // ---------- Sidebar ----------
 
 export type ConversationKind = 'issue' | 'pullRequest'
+export type SidebarView = ConversationKind | 'sessions'
+
+export type SessionHistoryRow = {
+  kind: ConversationKind
+  repo: string
+  issueNumber: number
+  nodeId: string
+  title: string
+  lastUsedAt: string
+}
 
 export type ConversationLink = {
   kind: ConversationKind

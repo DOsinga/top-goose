@@ -21,6 +21,7 @@ import {
   resetSessions,
 } from './goose/sessions'
 import { onDraft } from './mcp/draftServer'
+import { listSessionHistory } from './sessionHistory'
 import {
   getAuthMeta,
   getConversationRow,
@@ -253,6 +254,7 @@ export function registerIpc(): void {
   handle('board:listFields', (projectId) => listFields(projectId))
 
   // ----- goose sessions -----
+  handle('session:list', () => listSessionHistory())
   handle('session:open', (issueNodeId) => openIssueSession(issueNodeId))
   handle('session:prompt', async (issueNodeId, text) => {
     await promptIssue(issueNodeId, text)

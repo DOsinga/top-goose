@@ -4,7 +4,7 @@ GitHub issues and pull requests as conversations, with a private [Goose](https:/
 
 Issue triage usually means a browser tab per issue and no help from your agent. Top Goose turns a repository's issues into something closer to Slack:
 
-- **Left — channels:** switch between every open issue and every open pull request. Each view has filters suited to it, including PRs older than seven days and unsolicited ready PRs from outside the core team. Repository-wide GitHub search also finds closed issues and PRs outside the current list. `⌘[` and `⌘]` move backward and forward through opened conversations.
+- **Left — channels:** switch between every open issue, every open pull request, and Goose conversations ordered by their latest activity. Each GitHub view has filters suited to it, including PRs older than seven days and unsolicited ready PRs from outside the core team. Repository-wide GitHub search also finds closed issues and PRs outside the current list. `⌘[` and `⌘]` move backward and forward through opened conversations.
 - **Center — GitHub:** issue discussion and triage controls, or PR metadata, review summaries, inline review threads, general comments, and direct Approve and Close actions. Issues show their associated pull requests and pull requests show the issues they close; these links stay inside Top Goose even when the target is outside the current sidebar.
 - **Right — the goose:** a persistent private Goose conversation scoped to the selected issue or PR, running against your local clone. Goose receives the full public discussion as context and can use `gh` when asked. Enter sends a prompt and Shift-Enter inserts a newline; Codex review findings can be copied into the prompt with one click.
 
@@ -13,7 +13,7 @@ See [DESIGN.md](DESIGN.md) for the full design.
 ## Requirements
 
 - macOS (developed and tested there; nothing is intentionally platform-specific)
-- Node.js 20+
+- Node.js 22.12+
 - A [goose](https://block.github.io/goose/) binary ≥ 1.41 with a configured provider — Goose Desktop's bundled CLI, `brew install block-goose-cli`, or the install script. Run `goose configure` once if you haven't.
 - A GitHub account with a classic personal access token (see below)
 
@@ -72,3 +72,11 @@ npm run build
 ```
 
 Stack: Electron + electron-vite, React 19, TypeScript, Tailwind v4, zustand, `@modelcontextprotocol/sdk`.
+
+## Releases
+
+`npm run package:mac` builds a DMG and ZIP for the current Mac architecture in `dist/`. Pass `-- --arm64` or `-- --x64` to choose an architecture explicitly.
+
+The Release workflow can also be run by hand to produce downloadable Apple Silicon and Intel artifacts. A tag matching the version in `package.json`, such as `v0.1.0`, builds both and publishes them to a GitHub release.
+
+The app is not yet signed or notarized, so macOS will warn before opening a downloaded build. Signing can be enabled later without changing the release flow.
