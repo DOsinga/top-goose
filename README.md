@@ -13,7 +13,7 @@ See [DESIGN.md](DESIGN.md) for the full design.
 ## Requirements
 
 - macOS (developed and tested there; nothing is intentionally platform-specific)
-- Node.js 20+
+- Node.js 22.12+
 - A [goose](https://block.github.io/goose/) binary ≥ 1.41 with a configured provider — Goose Desktop's bundled CLI, `brew install block-goose-cli`, or the install script. Run `goose configure` once if you haven't.
 - A GitHub account with a classic personal access token (see below)
 
@@ -72,3 +72,11 @@ npm run build
 ```
 
 Stack: Electron + electron-vite, React 19, TypeScript, Tailwind v4, zustand, `@modelcontextprotocol/sdk`.
+
+## Releases
+
+`npm run package:mac` builds a DMG and ZIP for the current Mac architecture in `dist/`. Pass `-- --arm64` or `-- --x64` to choose an architecture explicitly.
+
+The Release workflow can also be run by hand to produce downloadable Apple Silicon and Intel artifacts. A tag matching the version in `package.json`, such as `v0.1.0`, builds both and publishes them to a GitHub release.
+
+The app is not yet signed or notarized, so macOS will warn before opening a downloaded build. Signing can be enabled later without changing the release flow.
