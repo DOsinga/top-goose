@@ -8,7 +8,7 @@ import type { ConversationLink, PendingDraft, RateBudget } from '../shared/types
 import * as activity from './activity'
 import { authState, setPat, signOut } from './github/auth'
 import { onBudgetChange, getBudget } from './github/client'
-import { fetchIssueDetail, postComment, setIssueAssignee } from './github/issues'
+import { closeIssue, fetchIssueDetail, postComment, setIssueAssignee } from './github/issues'
 import { approvePullRequest, closePullRequest, fetchPullRequestDetail } from './github/pullRequests'
 import { listFields, listProjects, setIssueSnooze, setIssueStatus } from './github/projects'
 import { searchConversations } from './github/search'
@@ -184,6 +184,12 @@ export function registerIpc(): void {
       updatedAt: comment.createdAt,
     })
     return comment
+  })
+  handle('issue:close', async (nodeId) => {
+    const row = getConversationRow(nodeId)
+    if (!row || row.kind !== 'issue') throw new Error('unknown issue')
+    await closeIssue(row.repo, row.issueNumber)
+    activity.removeConversation(nodeId)
   })
   handle('issue:setAssignee', async (nodeId, login) => {
     const row = getConversationRow(nodeId)
