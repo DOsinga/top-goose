@@ -161,6 +161,12 @@ export function registerIpc(): void {
     const row = getConversationRow(nodeId)
     if (!row || row.kind !== 'issue') throw new Error('unknown issue')
     const issue = await fetchIssueDetail(row.repo, row.issueNumber)
+    if (row.workflowStatus !== issue.workflowStatus || row.snoozedUntil !== issue.snoozedUntil) {
+      activity.applyLocalEdit(nodeId, {
+        workflowStatus: issue.workflowStatus,
+        snoozedUntil: issue.snoozedUntil,
+      })
+    }
     rememberLinkedConversations(issue.linkedPullRequests)
     return issue
   })
