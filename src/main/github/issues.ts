@@ -45,6 +45,10 @@ export async function fetchIssue(repo: string, issueNumber: number): Promise<Res
   return res.data
 }
 
+export async function closeIssue(repo: string, issueNumber: number): Promise<void> {
+  await restSend('PATCH', `/repos/${repo}/issues/${issueNumber}`, { state: 'closed' })
+}
+
 export async function fetchComments(
   repo: string,
   issueNumber: number,
