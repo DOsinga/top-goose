@@ -85,6 +85,7 @@ beforeEach(() => {
     issueLoading: false,
     issueError: null,
     assigneeSaving: false,
+    closingIssue: false,
     pullRequestLoading: false,
     pullRequestError: null,
     approvalSaving: false,
@@ -168,6 +169,37 @@ describe('conversation history', () => {
     expect(useStore.getState().sidebarView).toBe('issue')
     await useStore.getState().goForward()
     expect(useStore.getState().sidebarView).toBe('sessions')
+  })
+})
+
+describe('issue actions', () => {
+  it('closes the issue and removes it from the open sidebar', async () => {
+    invoke.mockResolvedValue(undefined)
+    const current = issue('ISSUE', 7)
+    useStore.setState({
+      rows: [
+        {
+          kind: 'issue',
+          repo: 'owner/repo',
+          issueNumber: 7,
+          nodeId: 'ISSUE',
+          title: 'Issue 7',
+          state: 'open',
+          commentCount: 0,
+          updatedAt: '2026-01-01T00:00:00Z',
+          hydratedAt: '2026-01-01T00:00:00Z',
+        },
+      ],
+      selectedNodeId: 'ISSUE',
+      issue: current,
+    })
+
+    await useStore.getState().closeIssue()
+
+    expect(invoke).toHaveBeenCalledWith('issue:close', 'ISSUE')
+    expect(useStore.getState().issue?.state).toBe('closed')
+    expect(useStore.getState().rows).toEqual([])
+    expect(useStore.getState().closingIssue).toBe(false)
   })
 })
 

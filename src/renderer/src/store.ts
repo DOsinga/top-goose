@@ -60,6 +60,7 @@ export type State = {
   issueLoading: boolean
   issueError: string | null
   assigneeSaving: boolean
+  closingIssue: boolean
   pullRequestLoading: boolean
   pullRequestError: string | null
   approvalSaving: boolean
@@ -84,6 +85,7 @@ export type State = {
   refreshPullRequest: () => Promise<void>
   reply: () => Promise<void>
   replyToPullRequest: () => Promise<void>
+  closeIssue: () => Promise<void>
   approvePullRequest: () => Promise<void>
   closePullRequest: () => Promise<void>
   setAssignee: (login: string | null) => Promise<void>
@@ -137,6 +139,7 @@ export const useStore = create<State>((set, get) => ({
   issueLoading: false,
   issueError: null,
   assigneeSaving: false,
+  closingIssue: false,
   pullRequestLoading: false,
   pullRequestError: null,
   approvalSaving: false,
@@ -183,6 +186,7 @@ export const useStore = create<State>((set, get) => ({
           issue: null,
           pullRequest: null,
           assigneeSaving: false,
+          closingIssue: false,
           pullRequestLoading: false,
           pullRequestError: null,
           approvalSaving: false,
@@ -227,6 +231,7 @@ export const useStore = create<State>((set, get) => ({
       issueLoading: true,
       issueError: null,
       assigneeSaving: false,
+      closingIssue: false,
       view: 'main',
     }))
     void api.invoke('issue:markRead', nodeId)
@@ -598,6 +603,39 @@ export const useStore = create<State>((set, get) => ({
     }
   },
 
+  closeIssue: async () => {
+    const { selectedNodeId, issue, assigneeSaving, closingIssue } = get()
+    const generation = get().generation
+    if (
+      !selectedNodeId ||
+      !issue ||
+      issue.nodeId !== selectedNodeId ||
+      issue.state !== 'open' ||
+      assigneeSaving ||
+      closingIssue
+    ) {
+      return
+    }
+    set({ closingIssue: true, issueError: null })
+    try {
+      await api.invoke('issue:close', selectedNodeId)
+      if (get().generation === generation && get().selectedNodeId === selectedNodeId) {
+        set((state) => ({
+          issue: state.issue ? { ...state.issue, state: 'closed' } : null,
+          rows: state.rows.filter((row) => row.nodeId !== selectedNodeId),
+          closingIssue: false,
+        }))
+      }
+    } catch (err) {
+      if (get().generation === generation && get().selectedNodeId === selectedNodeId) {
+        set({
+          closingIssue: false,
+          issueError: err instanceof Error ? err.message : String(err),
+        })
+      }
+    }
+  },
+
   setAssignee: async (login) => {
     const { selectedNodeId, issue, assigneeSaving } = get()
     const generation = get().generation
@@ -752,6 +790,7 @@ export const useStore = create<State>((set, get) => ({
         issue: null,
         pullRequest: null,
         assigneeSaving: false,
+        closingIssue: false,
         pullRequestLoading: false,
         pullRequestError: null,
         approvalSaving: false,

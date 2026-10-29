@@ -37,6 +37,8 @@ function IssueHeader({ issue }: { issue: IssueDetail }): React.JSX.Element {
   const setSnooze = useStore((state) => state.setSnooze)
   const setAssignee = useStore((state) => state.setAssignee)
   const assigneeSaving = useStore((state) => state.assigneeSaving)
+  const close = useStore((state) => state.closeIssue)
+  const closing = useStore((state) => state.closingIssue)
   const setView = useStore((state) => state.setView)
   const url = `https://github.com/${issue.repo}/issues/${issue.issueNumber}`
 
@@ -79,6 +81,13 @@ function IssueHeader({ issue }: { issue: IssueDetail }): React.JSX.Element {
             no board
           </button>
         )}
+        <button
+          className="shrink-0 rounded-lg border border-red-300 px-3 py-1 text-xs font-medium text-red-700 hover:bg-red-50 disabled:border-gray-200 disabled:text-gray-400 disabled:hover:bg-transparent"
+          disabled={issue.state !== 'open' || closing || assigneeSaving}
+          onClick={() => void close()}
+        >
+          {closing ? 'Closing…' : issue.state === 'closed' ? 'Closed' : 'Close'}
+        </button>
       </div>
       <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-gray-500">
         <a href={url} className="hover:text-accent hover:underline">

@@ -45,6 +45,7 @@ export type InvokeMap = {
   'issue:open': (nodeId: string) => IssueDetail
   'issue:markRead': (nodeId: string) => void
   'issue:reply': (nodeId: string, body: string) => IssueComment_
+  'issue:close': (nodeId: string) => void
   'issue:setAssignee': (nodeId: string, login: string | null) => string[]
   'issue:setStatus': (nodeId: string, status: string) => void
   'issue:setSnooze': (nodeId: string, date: string | null) => void
