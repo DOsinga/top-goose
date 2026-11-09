@@ -1,6 +1,6 @@
 {
   "name": "top-goose",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "GitHub issues and pull requests with a private Goose side-channel",
   "author": "Douwe Osinga",
   "main": "out/main/index.js",
