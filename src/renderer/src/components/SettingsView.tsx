@@ -7,9 +7,9 @@ import type {
   RepoConfig,
   Settings,
 } from '../../../shared/types'
+import { WEB_SERVER_PORT } from '../../../shared/web'
+import { api } from '../api'
 import { useStore } from '../store'
-
-const api = window.topGoose
 
 export function SettingsView(): React.JSX.Element {
   const [settings, setSettings] = useState<Settings | null>(null)
@@ -73,6 +73,16 @@ export function SettingsView(): React.JSX.Element {
           </div>
         </div>
         <RepoSection settings={settings} onSettings={setSettings} />
+        <div>
+          <h2 className="mb-2 text-sm font-semibold">Web access</h2>
+          <p className="text-xs text-gray-500">
+            Top Goose is available locally at <code>http://127.0.0.1:{WEB_SERVER_PORT}</code>. To use it from
+            another device on your tailnet, keep this app running and run:
+          </p>
+          <code className="mt-2 block rounded bg-gray-100 px-3 py-2 text-xs">
+            tailscale serve --bg {WEB_SERVER_PORT}
+          </code>
+        </div>
         <div className="flex items-center gap-4 border-t border-gray-200 pt-4">
           <ul className="flex-1 space-y-0.5 text-xs">
             <ChecklistItem ok={ready.auth} okText={`Signed in as @${auth?.login}`} todoText="Sign in to GitHub" />

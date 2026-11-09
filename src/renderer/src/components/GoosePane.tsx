@@ -27,11 +27,11 @@ export function GoosePane(): React.JSX.Element {
   }, [selected, chat?.messages.length, chat?.messages[chat.messages.length - 1]?.text])
 
   if (!selected) {
-    return <div className="w-96 shrink-0 border-l border-gray-200 bg-gray-50" />
+    return <div className="w-full shrink-0 border-l border-gray-200 bg-gray-50 md:w-96" />
   }
 
   return (
-    <div className="flex w-96 shrink-0 flex-col border-l border-gray-200 bg-gray-50">
+    <div className="flex w-full shrink-0 flex-col border-l border-gray-200 bg-gray-50 md:w-96">
       <div className="flex h-10 shrink-0 items-center gap-2 border-b border-gray-200 px-3">
         <span className="text-[13px] font-semibold text-goose">🪿 Goose</span>
         <span className="text-[11px] text-gray-400">private — nothing here posts to GitHub</span>

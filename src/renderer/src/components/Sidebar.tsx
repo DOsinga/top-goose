@@ -7,6 +7,7 @@ import {
   unreadCount,
 } from '../../../shared/issueFilters'
 import type { CachedRow, ConversationKind } from '../../../shared/types'
+import { api } from '../api'
 import { conversationUrl, shouldNavigateInside } from '../internalLinks'
 import { timeAgo } from '../time'
 import {
@@ -41,7 +42,7 @@ function ConversationsSidebar(): React.JSX.Element {
   )
 
   return (
-    <div className="flex w-72 shrink-0 flex-col border-r border-gray-200 bg-gray-50">
+    <div className="flex w-full shrink-0 flex-col border-r border-gray-200 bg-gray-50 md:w-72">
       <div className="flex h-[45px] shrink-0 items-center border-b border-gray-200 px-3">
         <span className="text-xs font-medium text-gray-700">Conversations</span>
         <span className="ml-1 text-[11px] text-gray-400">
@@ -118,8 +119,7 @@ function ConversationSidebar({ kind }: { kind: ConversationKind }): React.JSX.El
     setSearchLoading(true)
     setSearchError(null)
     const timer = window.setTimeout(() => {
-      void window.topGoose
-        .invoke('search:conversations', query)
+      void api.invoke('search:conversations', query)
         .then((results) => {
           if (active) setSearchResults(results)
         })
@@ -142,7 +142,7 @@ function ConversationSidebar({ kind }: { kind: ConversationKind }): React.JSX.El
   }
 
   return (
-    <div className="flex w-72 shrink-0 flex-col border-r border-gray-200 bg-gray-50">
+    <div className="flex w-full shrink-0 flex-col border-r border-gray-200 bg-gray-50 md:w-72">
       <SearchBox query={searchQuery} setQuery={setSearchQuery} />
       {!searching && (kind === 'issue' ? <IssueFilters rows={rows} /> : <PullRequestFilters rows={rows} />)}
       <div className="flex-1 overflow-y-auto">

@@ -94,6 +94,7 @@ export type InvokeChannel = keyof InvokeMap
 export type PushChannel = keyof PushMap
 
 export type TopGooseApi = {
+  isRemote: boolean
   invoke: <C extends InvokeChannel>(
     channel: C,
     ...args: Parameters<InvokeMap[C]>

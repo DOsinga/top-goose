@@ -90,7 +90,16 @@ export const Markdown = memo(function Markdown({
   return (
     <div className="prose-gh text-sm">
       {reviewHeading && <ReviewHeading heading={reviewHeading} copyToGoose={copyToGoose} />}
-      <ReactMarkdown remarkPlugins={[remarkGfm, remarkGithubImages, [remarkIssueRefs, { repo }]]}>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm, remarkGithubImages, [remarkIssueRefs, { repo }]]}
+        components={{
+          a: ({ href, children }) => (
+            <a href={href} target="_blank" rel="noreferrer">
+              {children}
+            </a>
+          ),
+        }}
+      >
         {reviewHeading?.body ?? children}
       </ReactMarkdown>
     </div>
