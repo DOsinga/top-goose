@@ -1,7 +1,7 @@
-import { matchesAttentionFilter } from '../../../shared/issueFilters'
+import { matchesAttentionFilter, type AttentionFilter } from '../../../shared/issueFilters'
 import type { SessionHistoryRow } from '../../../shared/types'
 import { conversationUrl, shouldNavigateInside } from '../internalLinks'
-import { useStore, type SidebarFilter } from '../store'
+import { useStore } from '../store'
 import { timeAgo } from '../time'
 
 export function SessionSidebar(): React.JSX.Element {
@@ -27,7 +27,7 @@ export function SessionSidebar(): React.JSX.Element {
         return !!conversation && matchesAttentionFilter(conversation, filter, login)
       }).length,
     ]),
-  ) as Record<SidebarFilter, number>
+  ) as Record<AttentionFilter, number>
 
   return (
     <div className="flex w-72 shrink-0 flex-col border-r border-gray-200 bg-gray-50">

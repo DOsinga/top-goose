@@ -39,8 +39,11 @@ function IssueHeader({ issue }: { issue: IssueDetail }): React.JSX.Element {
   const assigneeSaving = useStore((state) => state.assigneeSaving)
   const close = useStore((state) => state.closeIssue)
   const closing = useStore((state) => state.closingIssue)
+  const toggleStarred = useStore((state) => state.toggleStarred)
+  const starSaving = useStore((state) => state.starSaving)
   const setView = useStore((state) => state.setView)
   const url = `https://github.com/${issue.repo}/issues/${issue.issueNumber}`
+  const starred = issue.labels.some((label) => label.name.toLowerCase() === 'starred')
 
   return (
     <div className="shrink-0 border-b border-gray-200 px-5 py-3">
@@ -81,6 +84,21 @@ function IssueHeader({ issue }: { issue: IssueDetail }): React.JSX.Element {
             no board
           </button>
         )}
+        <button
+          type="button"
+          aria-label={starred ? 'Remove star' : 'Star issue'}
+          aria-pressed={starred}
+          title={starred ? 'Remove starred label' : 'Add starred label'}
+          className={`shrink-0 rounded-lg border px-2 py-0.5 text-lg leading-5 disabled:opacity-50 ${
+            starred
+              ? 'border-amber-300 bg-amber-50 text-amber-500'
+              : 'border-gray-300 text-gray-400 hover:border-amber-300 hover:text-amber-500'
+          }`}
+          disabled={starSaving}
+          onClick={() => void toggleStarred()}
+        >
+          {starred ? '★' : '☆'}
+        </button>
         <button
           className="shrink-0 rounded-lg border border-red-300 px-3 py-1 text-xs font-medium text-red-700 hover:bg-red-50 disabled:border-gray-200 disabled:text-gray-400 disabled:hover:bg-transparent"
           disabled={issue.state !== 'open' || closing || assigneeSaving}

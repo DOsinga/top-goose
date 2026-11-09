@@ -13,7 +13,7 @@ import type {
   SessionHistoryRow,
   SidebarView,
 } from '../../shared/types'
-import type { AttentionFilter } from '../../shared/issueFilters'
+import type { AttentionFilter, ConversationFilter } from '../../shared/issueFilters'
 
 const api = window.topGoose
 
@@ -35,8 +35,14 @@ type GooseChat = {
   loaded: boolean
 }
 
-export type SidebarFilter = AttentionFilter
-export type PullRequestFilter = 'reviewRequested' | 'assigned' | 'authored' | 'olderThan7Days' | 'unsolicited'
+export type SidebarFilter = ConversationFilter
+export type PullRequestFilter =
+  | 'reviewRequested'
+  | 'assigned'
+  | 'authored'
+  | 'olderThan7Days'
+  | 'unsolicited'
+  | 'starred'
 export type PullRequestStateFilter = 'ready' | 'draft' | 'approved' | 'changesRequested' | 'reviewRequired'
 type NavigationEntry = { kind: ConversationKind; nodeId: string; sidebarView: SidebarView }
 
@@ -50,7 +56,8 @@ export type State = {
   sessionRowsError: string | null
   /** active filters combine with AND; none active shows everything */
   sidebarFilters: SidebarFilter[]
-  gooseFilters: SidebarFilter[]
+  conversationFilters: SidebarFilter[]
+  gooseFilters: AttentionFilter[]
   workflowStatusFilter: string | null
   pullRequestFilters: PullRequestFilter[]
   pullRequestStateFilter: PullRequestStateFilter | null
@@ -65,6 +72,7 @@ export type State = {
   pullRequestError: string | null
   approvalSaving: boolean
   closingPullRequest: boolean
+  starSaving: boolean
   composers: Record<string, ComposerState>
   gooseChats: Record<string, GooseChat>
   gooseInputs: Record<string, string>
@@ -88,6 +96,7 @@ export type State = {
   closeIssue: () => Promise<void>
   approvePullRequest: () => Promise<void>
   closePullRequest: () => Promise<void>
+  toggleStarred: () => Promise<void>
   setAssignee: (login: string | null) => Promise<void>
   setStatus: (status: string) => Promise<void>
   setSnooze: (date: string | null) => Promise<void>
@@ -100,7 +109,8 @@ export type State = {
   setView: (view: 'main' | 'settings') => void
   setAuth: (auth: AuthState) => void
   toggleSidebarFilter: (filter: SidebarFilter) => void
-  toggleGooseFilter: (filter: SidebarFilter) => void
+  toggleConversationFilter: (filter: SidebarFilter) => void
+  toggleGooseFilter: (filter: AttentionFilter) => void
   setWorkflowStatusFilter: (status: string | null) => void
   setSidebarView: (view: SidebarView) => void
   togglePullRequestFilter: (filter: PullRequestFilter) => void
@@ -129,6 +139,7 @@ export const useStore = create<State>((set, get) => ({
   sessionRowsLoading: false,
   sessionRowsError: null,
   sidebarFilters: [],
+  conversationFilters: [],
   gooseFilters: [],
   workflowStatusFilter: null,
   pullRequestFilters: [],
@@ -144,6 +155,7 @@ export const useStore = create<State>((set, get) => ({
   pullRequestError: null,
   approvalSaving: false,
   closingPullRequest: false,
+  starSaving: false,
   composers: {},
   gooseChats: {},
   gooseInputs: {},
@@ -178,6 +190,7 @@ export const useStore = create<State>((set, get) => ({
           sessionRows: [],
           sessionRowsLoading: false,
           sessionRowsError: null,
+          conversationFilters: [],
           gooseFilters: [],
           workflowStatusFilter: null,
           pullRequestFilters: [],
@@ -191,6 +204,7 @@ export const useStore = create<State>((set, get) => ({
           pullRequestError: null,
           approvalSaving: false,
           closingPullRequest: false,
+          starSaving: false,
           composers: {},
           gooseChats: {},
           gooseInputs: {},
@@ -636,6 +650,66 @@ export const useStore = create<State>((set, get) => ({
     }
   },
 
+  toggleStarred: async () => {
+    const { selectedNodeId, conversationKind, issue, pullRequest, starSaving } = get()
+    const detail = conversationKind === 'issue' ? issue : pullRequest
+    if (!selectedNodeId || !detail || detail.nodeId !== selectedNodeId || starSaving) return
+    const previousLabels = detail.labels
+    const starred = !previousLabels.some((label) => label.name.toLowerCase() === 'starred')
+    const optimisticLabels = starred
+      ? [...previousLabels, { name: 'starred', color: 'e3b341' }]
+      : previousLabels.filter((label) => label.name.toLowerCase() !== 'starred')
+    set((state) => ({
+      rows: replaceRowLabels(state.rows, selectedNodeId, optimisticLabels),
+      issue:
+        conversationKind === 'issue' && state.issue?.nodeId === selectedNodeId
+          ? { ...state.issue, labels: optimisticLabels }
+          : state.issue,
+      pullRequest:
+        conversationKind === 'pullRequest' && state.pullRequest?.nodeId === selectedNodeId
+          ? { ...state.pullRequest, labels: optimisticLabels }
+          : state.pullRequest,
+      starSaving: true,
+      issueError: conversationKind === 'issue' ? null : state.issueError,
+      pullRequestError: conversationKind === 'pullRequest' ? null : state.pullRequestError,
+    }))
+    try {
+      const labels = await api.invoke('conversation:setStarred', selectedNodeId, starred)
+      set((state) => ({
+        rows: replaceRowLabels(state.rows, selectedNodeId, labels),
+        issue:
+          state.issue?.nodeId === selectedNodeId ? { ...state.issue, labels } : state.issue,
+        pullRequest:
+          state.pullRequest?.nodeId === selectedNodeId
+            ? { ...state.pullRequest, labels }
+            : state.pullRequest,
+        starSaving: false,
+      }))
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      set((state) => ({
+        rows: replaceRowLabels(state.rows, selectedNodeId, previousLabels),
+        issue:
+          state.issue?.nodeId === selectedNodeId
+            ? { ...state.issue, labels: previousLabels }
+            : state.issue,
+        pullRequest:
+          state.pullRequest?.nodeId === selectedNodeId
+            ? { ...state.pullRequest, labels: previousLabels }
+            : state.pullRequest,
+        starSaving: false,
+        issueError:
+          conversationKind === 'issue' && state.selectedNodeId === selectedNodeId
+            ? message
+            : state.issueError,
+        pullRequestError:
+          conversationKind === 'pullRequest' && state.selectedNodeId === selectedNodeId
+            ? message
+            : state.pullRequestError,
+      }))
+    }
+  },
+
   setAssignee: async (login) => {
     const { selectedNodeId, issue, assigneeSaving } = get()
     const generation = get().generation
@@ -782,6 +856,7 @@ export const useStore = create<State>((set, get) => ({
         sessionRows: [],
         sessionRowsLoading: false,
         sessionRowsError: null,
+        conversationFilters: [],
         gooseFilters: [],
         workflowStatusFilter: null,
         pullRequestFilters: [],
@@ -795,6 +870,7 @@ export const useStore = create<State>((set, get) => ({
         pullRequestError: null,
         approvalSaving: false,
         closingPullRequest: false,
+        starSaving: false,
         composers: {},
         gooseChats: {},
         gooseInputs: {},
@@ -809,6 +885,12 @@ export const useStore = create<State>((set, get) => ({
         ? s.sidebarFilters.filter((f) => f !== filter)
         : [...s.sidebarFilters, filter],
     })),
+  toggleConversationFilter: (filter) =>
+    set((state) => ({
+      conversationFilters: state.conversationFilters.includes(filter)
+        ? state.conversationFilters.filter((value) => value !== filter)
+        : [...state.conversationFilters, filter],
+    })),
   toggleGooseFilter: (filter) =>
     set((state) => ({
       gooseFilters: state.gooseFilters.includes(filter)
@@ -817,9 +899,9 @@ export const useStore = create<State>((set, get) => ({
     })),
   setWorkflowStatusFilter: (workflowStatusFilter) => set({ workflowStatusFilter }),
   setSidebarView: (sidebarView) => {
-    if (sidebarView === 'sessions') {
+    if (sidebarView === 'sessions' || sidebarView === 'conversations') {
       set({ sidebarView })
-      if (!get().sessionRowsLoading) void get().loadSessionHistory()
+      if (sidebarView === 'sessions' && !get().sessionRowsLoading) void get().loadSessionHistory()
       return
     }
     if (get().sidebarView === sidebarView && get().conversationKind === sidebarView) return
@@ -843,6 +925,14 @@ export const useStore = create<State>((set, get) => ({
     })),
   setPullRequestStateFilter: (pullRequestStateFilter) => set({ pullRequestStateFilter }),
 }))
+
+function replaceRowLabels(
+  rows: CachedRow[],
+  nodeId: string,
+  labels: { name: string; color: string }[],
+): CachedRow[] {
+  return rows.map((row) => (row.nodeId === nodeId ? { ...row, labels } : row))
+}
 
 function navigationUpdate(
   state: State,

@@ -8,7 +8,13 @@ import type { ConversationLink, PendingDraft, RateBudget } from '../shared/types
 import * as activity from './activity'
 import { authState, setPat, signOut } from './github/auth'
 import { onBudgetChange, getBudget } from './github/client'
-import { closeIssue, fetchIssueDetail, postComment, setIssueAssignee } from './github/issues'
+import {
+  closeIssue,
+  fetchIssueDetail,
+  postComment,
+  setConversationStarred,
+  setIssueAssignee,
+} from './github/issues'
 import { approvePullRequest, closePullRequest, fetchPullRequestDetail } from './github/pullRequests'
 import { listFields, listProjects, setIssueSnooze, setIssueStatus } from './github/projects'
 import { searchConversations } from './github/search'
@@ -155,6 +161,13 @@ export function registerIpc(): void {
     putSearchedRows(rows)
     return rows
   })
+  handle('conversation:setStarred', async (nodeId, starred) => {
+    const row = getConversationRow(nodeId)
+    if (!row) throw new Error('unknown issue or pull request')
+    const labels = await setConversationStarred(row.repo, row.issueNumber, starred)
+    activity.applyLocalEdit(nodeId, { labels })
+    return labels
+  })
 
   // ----- issue detail -----
   handle('issue:open', async (nodeId) => {
@@ -180,6 +193,7 @@ export function registerIpc(): void {
       commentCount: row.commentCount + 1,
       commentCountAtRead: row.commentCount + 1,
       viewerCommented: true,
+      unread: false,
       lastComment: { author: comment.author, snippet: comment.body.replace(/\s+/g, ' ').slice(0, 120) },
       updatedAt: comment.createdAt,
     })
@@ -241,6 +255,8 @@ export function registerIpc(): void {
     activity.applyLocalEdit(nodeId, {
       commentCount: row.commentCount + 1,
       commentCountAtRead: row.commentCount + 1,
+      viewerCommented: true,
+      unread: false,
       lastComment: { author: comment.author, snippet: comment.body.replace(/\s+/g, ' ').slice(0, 120) },
       updatedAt: comment.createdAt,
     })

@@ -43,6 +43,8 @@ function PullRequestHeader({ pullRequest }: { pullRequest: PullRequestDetail }):
   const close = useStore((state) => state.closePullRequest)
   const approving = useStore((state) => state.approvalSaving)
   const closing = useStore((state) => state.closingPullRequest)
+  const toggleStarred = useStore((state) => state.toggleStarred)
+  const starSaving = useStore((state) => state.starSaving)
   const url = `https://github.com/${pullRequest.repo}/pull/${pullRequest.pullRequestNumber}`
   const headBranchUrl = pullRequest.headRepo
     ? branchUrl(pullRequest.headRepo, pullRequest.headRefName)
@@ -50,6 +52,7 @@ function PullRequestHeader({ pullRequest }: { pullRequest: PullRequestDetail }):
   const baseBranchUrl = branchUrl(pullRequest.repo, pullRequest.baseRefName)
   const ownPullRequest = pullRequest.author.toLowerCase() === login?.toLowerCase()
   const approved = pullRequest.viewerReviewState === 'APPROVED'
+  const starred = pullRequest.labels.some((label) => label.name.toLowerCase() === 'starred')
   const canApprove = pullRequest.state === 'open' && !ownPullRequest && !approved
   const state = pullRequest.merged
     ? 'merged'
@@ -77,6 +80,21 @@ function PullRequestHeader({ pullRequest }: { pullRequest: PullRequestDetail }):
         <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${stateColor}`}>
           {state}
         </span>
+        <button
+          type="button"
+          aria-label={starred ? 'Remove star' : 'Star pull request'}
+          aria-pressed={starred}
+          title={starred ? 'Remove starred label' : 'Add starred label'}
+          className={`shrink-0 rounded-lg border px-2 py-0.5 text-lg leading-5 disabled:opacity-50 ${
+            starred
+              ? 'border-amber-300 bg-amber-50 text-amber-500'
+              : 'border-gray-300 text-gray-400 hover:border-amber-300 hover:text-amber-500'
+          }`}
+          disabled={starSaving}
+          onClick={() => void toggleStarred()}
+        >
+          {starred ? '★' : '☆'}
+        </button>
         <button
           className="shrink-0 rounded-lg bg-green-600 px-3 py-1 text-xs font-medium text-white disabled:bg-gray-200 disabled:text-gray-500"
           disabled={!canApprove || approving || closing}

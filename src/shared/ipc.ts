@@ -40,6 +40,7 @@ export type InvokeMap = {
   'sidebar:rows': () => CachedRow[]
   'sidebar:refresh': () => void
   'search:conversations': (query: string) => CachedRow[]
+  'conversation:setStarred': (nodeId: string, starred: boolean) => { name: string; color: string }[]
 
   // issue detail
   'issue:open': (nodeId: string) => IssueDetail

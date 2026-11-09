@@ -194,6 +194,7 @@ fragment RowFields on Issue {
   title
   author { login }
   assignees(first: 10) { nodes { login } }
+  labels(first: 100) { nodes { name color } }
   state
   updatedAt
   repository { nameWithOwner }
@@ -244,6 +245,7 @@ type GqlIssueRow = {
   title: string
   author: { login: string } | null
   assignees: { nodes: { login: string }[] }
+  labels: { nodes: { name: string; color: string }[] }
   state: string
   updatedAt: string
   repository: { nameWithOwner: string }
@@ -263,6 +265,7 @@ type GqlPullRequestRow = {
   title: string
   author: { login: string } | null
   assignees: { nodes: { login: string }[] }
+  labels: { nodes: { name: string; color: string }[] }
   state: string
   createdAt: string
   updatedAt: string
@@ -286,6 +289,7 @@ fragment PullRequestRowFields on PullRequest {
   title
   author { login }
   assignees(first: 10) { nodes { login } }
+  labels(first: 100) { nodes { name color } }
   state
   createdAt
   updatedAt
@@ -335,6 +339,7 @@ function toRow(issue: GqlIssueRow, viewerCommented?: boolean): CachedRow {
     title: issue.title,
     author: issue.author?.login ?? 'ghost',
     assignees: issue.assignees.nodes.map((a) => a.login),
+    labels: issue.labels.nodes,
     viewerCommented: viewerCommented ?? existing?.viewerCommented,
     state: issue.state.toLowerCase(),
     workflowStatus: fields.status,
@@ -362,6 +367,7 @@ function toPullRequestRow(pullRequest: GqlPullRequestRow, viewerCommented?: bool
     title: pullRequest.title,
     author: pullRequest.author?.login ?? 'ghost',
     assignees: pullRequest.assignees.nodes.map((assignee) => assignee.login),
+    labels: pullRequest.labels.nodes,
     viewerCommented: viewerCommented ?? existing?.viewerCommented,
     state: pullRequest.state.toLowerCase(),
     createdAt: pullRequest.createdAt,
@@ -507,6 +513,7 @@ async function reconcile(currentGeneration: number, forceHydration = false): Pro
       !cached ||
       cached.updatedAt !== conversation.updatedAt ||
       cached.viewerCommented !== conversation.viewerCommented ||
+      !('labels' in cached) ||
       (conversation.kind === 'pullRequest' && !('linkedIssues' in cached))
     )
   })

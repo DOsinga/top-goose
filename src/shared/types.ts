@@ -50,7 +50,7 @@ export type AuthState = {
 // ---------- Sidebar ----------
 
 export type ConversationKind = 'issue' | 'pullRequest'
-export type SidebarView = ConversationKind | 'sessions'
+export type SidebarView = ConversationKind | 'conversations' | 'sessions'
 
 export type SessionHistoryRow = {
   kind: ConversationKind
@@ -80,6 +80,7 @@ export type CachedRow = {
   /** issue author login; the "last voice" when there are no comments */
   author?: string
   assignees?: string[]
+  labels?: { name: string; color: string }[]
   viewerCommented?: boolean
   state: string
   workflowStatus?: string
