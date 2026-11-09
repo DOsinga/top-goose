@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { isUnreplied, matchesAttentionFilter } from '../src/shared/issueFilters'
+import {
+  isStarred,
+  isUnreplied,
+  matchesAttentionFilter,
+  matchesConversationFilter,
+} from '../src/shared/issueFilters'
 import type { CachedRow } from '../src/shared/types'
 
 function issue(overrides: Partial<CachedRow> = {}): CachedRow {
@@ -82,5 +87,15 @@ describe('attention filters', () => {
     expect(
       matchesAttentionFilter(issue({ commentCount: 5, commentCountAtRead: 5 }), 'unread', 'DOsinga'),
     ).toBe(false)
+  })
+})
+
+describe('starred filter', () => {
+  it('matches the starred label case-insensitively', () => {
+    const row = issue({ labels: [{ name: 'Starred', color: 'e3b341' }] })
+
+    expect(isStarred(row)).toBe(true)
+    expect(matchesConversationFilter(row, 'starred', 'DOsinga')).toBe(true)
+    expect(isStarred(issue({ labels: [{ name: 'bug', color: 'd73a4a' }] }))).toBe(false)
   })
 })

@@ -75,6 +75,7 @@ beforeEach(() => {
     sessionRowsLoading: false,
     sessionRowsError: null,
     sidebarFilters: [],
+    conversationFilters: [],
     gooseFilters: [],
     pullRequestFilters: [],
     pullRequestStateFilter: null,
@@ -90,6 +91,7 @@ beforeEach(() => {
     pullRequestError: null,
     approvalSaving: false,
     closingPullRequest: false,
+    starSaving: false,
     composers: {},
     gooseChats: {},
     gooseInputs: {},
@@ -200,6 +202,35 @@ describe('issue actions', () => {
     expect(useStore.getState().issue?.state).toBe('closed')
     expect(useStore.getState().rows).toEqual([])
     expect(useStore.getState().closingIssue).toBe(false)
+  })
+
+  it('adds the starred label through the shared conversation action', async () => {
+    invoke.mockResolvedValueOnce([{ name: 'starred', color: 'fbca04' }])
+    const current = issue('ISSUE', 7)
+    useStore.setState({
+      rows: [
+        {
+          kind: 'issue',
+          repo: 'owner/repo',
+          issueNumber: 7,
+          nodeId: 'ISSUE',
+          title: 'Issue 7',
+          labels: [],
+          state: 'open',
+          commentCount: 0,
+          updatedAt: '2026-01-01T00:00:00Z',
+          hydratedAt: '2026-01-01T00:00:00Z',
+        },
+      ],
+      selectedNodeId: 'ISSUE',
+      issue: current,
+    })
+
+    await useStore.getState().toggleStarred()
+
+    expect(invoke).toHaveBeenCalledWith('conversation:setStarred', 'ISSUE', true)
+    expect(useStore.getState().issue?.labels).toEqual([{ name: 'starred', color: 'fbca04' }])
+    expect(useStore.getState().rows[0].labels).toEqual([{ name: 'starred', color: 'fbca04' }])
   })
 })
 

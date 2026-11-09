@@ -1,6 +1,11 @@
 import { useEffect, useState } from 'react'
 import { isUnsolicitedPullRequest } from '../../../shared/pullRequestFilters'
-import { includesLogin, matchesAttentionFilter, unreadCount } from '../../../shared/issueFilters'
+import {
+  includesLogin,
+  isStarred,
+  matchesConversationFilter,
+  unreadCount,
+} from '../../../shared/issueFilters'
 import type { CachedRow, ConversationKind } from '../../../shared/types'
 import { conversationUrl, shouldNavigateInside } from '../internalLinks'
 import { timeAgo } from '../time'
@@ -16,7 +21,69 @@ const NO_BOARD_STATUS = '__no_board_status__'
 
 export function Sidebar(): React.JSX.Element {
   const view = useStore((state) => state.sidebarView)
-  return view === 'sessions' ? <SessionSidebar /> : <ConversationSidebar kind={view} />
+  if (view === 'sessions') return <SessionSidebar />
+  if (view === 'conversations') return <ConversationsSidebar />
+  return <ConversationSidebar kind={view} />
+}
+
+function ConversationsSidebar(): React.JSX.Element {
+  const rows = useStore((state) => state.rows)
+    .filter((row) => row.viewerCommented)
+    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+  const selected = useStore((state) => state.selectedNodeId)
+  const filters = useStore((state) => state.conversationFilters)
+  const toggleFilter = useStore((state) => state.toggleConversationFilter)
+  const login = useStore((state) => state.auth?.login)
+  const selectIssue = useStore((state) => state.selectIssue)
+  const selectPullRequest = useStore((state) => state.selectPullRequest)
+  const visible = rows.filter((row) =>
+    filters.every((filter) => matchesConversationFilter(row, filter, login)),
+  )
+
+  return (
+    <div className="flex w-72 shrink-0 flex-col border-r border-gray-200 bg-gray-50">
+      <div className="flex h-[45px] shrink-0 items-center border-b border-gray-200 px-3">
+        <span className="text-xs font-medium text-gray-700">Conversations</span>
+        <span className="ml-1 text-[11px] text-gray-400">
+          {filters.length > 0 ? `${visible.length}/${rows.length}` : rows.length}
+        </span>
+      </div>
+      <FilterArea>
+        <div className="flex flex-wrap gap-1">
+          {(['unread', 'unreplied', 'assigned', 'starred'] as const).map((filter) => (
+            <FilterPill
+              key={filter}
+              label={filter}
+              count={rows.filter((row) => matchesConversationFilter(row, filter, login)).length}
+              active={filters.includes(filter)}
+              onClick={() => toggleFilter(filter)}
+            />
+          ))}
+        </div>
+      </FilterArea>
+      <div className="flex-1 overflow-y-auto">
+        {rows.length === 0 && (
+          <div className="p-4 text-sm text-gray-500">No open issues or pull requests that you replied to.</div>
+        )}
+        {rows.length > 0 && visible.length === 0 && (
+          <div className="p-4 text-sm text-gray-500">Nothing matches the active filters.</div>
+        )}
+        {visible.map((row) => (
+          <SidebarRow
+            key={row.nodeId}
+            row={row}
+            selected={row.nodeId === selected}
+            onClick={() =>
+              row.kind === 'issue'
+                ? void selectIssue(row.nodeId, true, 'conversations')
+                : void selectPullRequest(row.nodeId, true, 'conversations')
+            }
+            kind={row.kind}
+          />
+        ))}
+      </div>
+    </div>
+  )
 }
 
 function ConversationSidebar({ kind }: { kind: ConversationKind }): React.JSX.Element {
@@ -202,12 +269,12 @@ function IssueFilters({ rows }: { rows: CachedRow[] }): React.JSX.Element {
   const noStatusCount = rows.filter((row) => !row.workflowStatus).length
   return (
     <FilterArea>
-      <div className="flex gap-1">
-        {(['unread', 'unreplied', 'assigned'] as const).map((filter) => (
+      <div className="flex flex-wrap gap-1">
+        {(['unread', 'unreplied', 'assigned', 'starred'] as const).map((filter) => (
           <FilterPill
             key={filter}
             label={filter}
-            count={rows.filter((row) => matchesAttentionFilter(row, filter, login)).length}
+            count={rows.filter((row) => matchesConversationFilter(row, filter, login)).length}
             active={filters.includes(filter)}
             onClick={() => toggleFilter(filter)}
           />
@@ -245,6 +312,7 @@ function PullRequestFilters({ rows }: { rows: CachedRow[] }): React.JSX.Element 
     authored: (row) => row.author?.toLowerCase() === login?.toLowerCase(),
     olderThan7Days: (row) => isOlderThanSevenDays(row),
     unsolicited: isUnsolicitedPullRequest,
+    starred: isStarred,
   }
   const passesState: Record<PullRequestStateFilter, (row: CachedRow) => boolean> = {
     ready: (row) => !row.isDraft,
@@ -256,7 +324,7 @@ function PullRequestFilters({ rows }: { rows: CachedRow[] }): React.JSX.Element 
   return (
     <FilterArea>
       <div className="flex flex-wrap gap-1">
-        {(['reviewRequested', 'assigned', 'authored', 'olderThan7Days', 'unsolicited'] as const).map((filter) => (
+        {(['reviewRequested', 'assigned', 'authored', 'olderThan7Days', 'unsolicited', 'starred'] as const).map((filter) => (
           <FilterPill
             key={filter}
             label={
@@ -307,7 +375,7 @@ function filterIssues(
 ): CachedRow[] {
   return rows.filter(
     (row) =>
-      filters.every((filter) => matchesAttentionFilter(row, filter, login)) &&
+      filters.every((filter) => matchesConversationFilter(row, filter, login)) &&
       (statusFilter === null ||
         (statusFilter === NO_BOARD_STATUS ? !row.workflowStatus : row.workflowStatus === statusFilter)),
   )
@@ -325,6 +393,7 @@ function filterPullRequests(
     authored: (row) => row.author?.toLowerCase() === login?.toLowerCase(),
     olderThan7Days: (row) => isOlderThanSevenDays(row),
     unsolicited: isUnsolicitedPullRequest,
+    starred: isStarred,
   }
   const passesState: Record<PullRequestStateFilter, (row: CachedRow) => boolean> = {
     ready: (row) => !row.isDraft,
@@ -406,6 +475,7 @@ function SidebarRow({
           </span>
         )}
         {row.hasPendingDraft && <span title="Goose drafted a reply">✏️</span>}
+        {isStarred(row) && <span className="text-amber-500" title="Starred">★</span>}
         {unread > 0 && (
           <span className="rounded-full bg-accent px-1.5 text-[11px] font-semibold text-white">{unread}</span>
         )}

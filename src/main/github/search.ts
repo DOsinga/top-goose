@@ -8,6 +8,7 @@ type RestSearchItem = {
   state: string
   user: { login: string } | null
   assignees: { login: string }[]
+  labels: ({ name: string; color: string } | string)[]
   comments: number
   created_at: string
   updated_at: string
@@ -44,6 +45,9 @@ export async function searchConversations(repo: string, query: string): Promise<
       title: item.title,
       author: item.user?.login ?? 'ghost',
       assignees: item.assignees.map((assignee) => assignee.login),
+      labels: item.labels.map((label) =>
+        typeof label === 'string' ? { name: label, color: 'cccccc' } : label,
+      ),
       state: item.state,
       commentCount: item.comments,
       createdAt: item.created_at,

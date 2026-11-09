@@ -27,6 +27,8 @@ type RestComment = {
   updated_at: string
 }
 
+type RestLabel = { name: string; color: string } | string
+
 function toComment(c: RestComment): IssueComment {
   return {
     id: c.id,
@@ -165,4 +167,19 @@ export async function setIssueAssignee(
   })
   if (!issue) throw new Error('assignee update returned no body')
   return issue.assignees.map((assignee) => assignee.login)
+}
+
+export async function setConversationStarred(
+  repo: string,
+  issueNumber: number,
+  starred: boolean,
+): Promise<{ name: string; color: string }[]> {
+  const pathname = `/repos/${repo}/issues/${issueNumber}/labels`
+  const labels = starred
+    ? await restSend<RestLabel[]>('POST', pathname, { labels: ['starred'] })
+    : await restSend<RestLabel[]>('DELETE', `${pathname}/starred`)
+  if (!labels) throw new Error('label update returned no body')
+  return labels.map((label) =>
+    typeof label === 'string' ? { name: label, color: 'cccccc' } : label,
+  )
 }

@@ -1,6 +1,11 @@
 import type { CachedRow } from './types'
 
 export type AttentionFilter = 'unread' | 'unreplied' | 'assigned'
+export type ConversationFilter = AttentionFilter | 'starred'
+
+export function isStarred(row: CachedRow): boolean {
+  return !!row.labels?.some((label) => label.name.toLowerCase() === 'starred')
+}
 
 export function unreadCount(row: CachedRow): number {
   if (row.commentCountAtRead === undefined) return row.unread ? -1 : 0
@@ -24,4 +29,8 @@ export function matchesAttentionFilter(row: CachedRow, filter: AttentionFilter, 
   if (filter === 'unread') return unreadCount(row) !== 0
   if (filter === 'unreplied') return isUnreplied(row, login)
   return includesLogin(row.assignees, login)
+}
+
+export function matchesConversationFilter(row: CachedRow, filter: ConversationFilter, login?: string): boolean {
+  return filter === 'starred' ? isStarred(row) : matchesAttentionFilter(row, filter, login)
 }
