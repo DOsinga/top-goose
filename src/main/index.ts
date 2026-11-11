@@ -6,6 +6,7 @@ import { shutdownSessions } from './goose/sessions'
 import { invokeHandler, onPush, registerIpc } from './ipc'
 import { startDraftServer, stopDraftServer } from './mcp/draftServer'
 import { flushAllStores } from './store'
+import { startTailscale, stopTailscale } from './tailscale'
 import { startWebServer, type WebServer } from './webServer'
 
 let webServer: WebServer | undefined
@@ -64,6 +65,7 @@ app.whenReady().then(async () => {
       onPush,
     })
     console.log(`Top Goose web access: http://127.0.0.1:${webServer.port}`)
+    await startTailscale(webServer.port)
   } catch (error) {
     console.error('Top Goose web access could not start:', error)
   }
@@ -86,6 +88,7 @@ app.on('before-quit', () => {
   activity.stop()
   shutdownSessions()
   stopDraftServer()
+  stopTailscale()
   void webServer?.stop()
   flushAllStores()
 })

@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { GoosePane } from './components/GoosePane'
 import { IssuePane } from './components/IssuePane'
 import { PullRequestPane } from './components/PullRequestPane'
@@ -48,21 +48,39 @@ export function App(): React.JSX.Element {
       ) : view === 'settings' ? (
         <SettingsView />
       ) : (
-        <>
-          <div className="flex min-h-0 flex-1">
-            <div className={`${mobilePane === 'list' ? 'flex' : 'hidden'} min-w-0 flex-1 md:contents`}>
-              <Sidebar />
-            </div>
-            <div className={`${mobilePane === 'conversation' ? 'flex' : 'hidden'} min-w-0 flex-1 md:contents`}>
-              {conversationKind === 'issue' ? <IssuePane /> : <PullRequestPane />}
-            </div>
-            <div className={`${mobilePane === 'goose' ? 'flex' : 'hidden'} min-w-0 flex-1 md:contents`}>
-              <GoosePane />
-            </div>
+        <div className="flex min-h-0 flex-1">
+          <div className={`${mobilePane === 'list' ? 'flex' : 'hidden'} min-w-0 flex-1 md:contents`}>
+            <Sidebar />
           </div>
-          <MobileNavigation />
-        </>
+          <div className={`${mobilePane === 'conversation' ? 'flex' : 'hidden'} min-w-0 flex-1 md:contents`}>
+            {conversationKind === 'issue' ? <IssuePane /> : <PullRequestPane />}
+          </div>
+          <div className={`${mobilePane === 'goose' ? 'flex' : 'hidden'} min-w-0 flex-1 md:contents`}>
+            <GoosePane />
+          </div>
+        </div>
       )}
+      <RemoteFooter />
+      {view === 'main' && (!api.isRemote || auth?.authenticated) && <MobileNavigation />}
+    </div>
+  )
+}
+
+function RemoteFooter(): React.JSX.Element | null {
+  const [url, setUrl] = useState<string | null>(null)
+
+  useEffect(() => {
+    void api.invoke('remote:url').then(setUrl)
+    return api.on('push:remote', setUrl)
+  }, [])
+
+  if (!url) return null
+  return (
+    <div className="flex h-6 shrink-0 items-center border-t border-gray-200 bg-gray-50 px-3 text-[11px] text-gray-400">
+      remote:{' '}
+      <a href={url} target="_blank" rel="noreferrer" className="ml-1 text-accent hover:underline">
+        {url}
+      </a>
     </div>
   )
 }

@@ -52,13 +52,7 @@ Optionally pick a Projects V2 board plus its `Status` and snooze (date) fields â
 
 ## Web access over Tailscale
 
-While the desktop app is running, the same interface is served at `http://127.0.0.1:6573`. To make it available to phones and other devices on your tailnet, run this once on the Mac:
-
-```sh
-tailscale serve --bg 6573
-```
-
-Open the HTTPS URL printed by Tailscale on another device. GitHub credentials, repository settings, and the Goose process stay on the Mac; the browser uses the same renderer over an HTTP/SSE bridge. Tailscale Serve supplies the authenticated tailnet identity, and Top Goose does not listen on the LAN. Keep the desktop app running while using the web view. Settings and sign-in remain desktop-only.
+When Tailscale is installed and running, Top Goose starts Tailscale Serve automatically and prints the remote HTTPS URL in its footer. Open that URL on another device in your tailnet. GitHub credentials, repository settings, and the Goose process stay on the Mac; the browser uses the same renderer over an HTTP/SSE bridge. Tailscale Serve supplies the authenticated tailnet identity, and Top Goose does not listen on the LAN. The remote server stops with Top Goose, so keep the desktop app running while using the web view. Settings and sign-in remain desktop-only.
 
 ## How it talks to GitHub
 

@@ -72,6 +72,7 @@ export type InvokeMap = {
 
   // rate budget
   'budget:get': () => RateBudget | null
+  'remote:url': () => string | null
 }
 
 // IssueComment is re-exported under a private alias so this file only
@@ -87,6 +88,7 @@ export type PushMap = {
   'push:draft': (draft: PendingDraft) => void
   'push:auth': (state: AuthState) => void
   'push:budget': (budget: RateBudget) => void
+  'push:remote': (url: string | null) => void
   'push:reset': () => void
 }
 

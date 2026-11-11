@@ -4,7 +4,6 @@ import { createServer, request as httpRequest, type IncomingMessage, type Server
 import { request as httpsRequest } from 'node:https'
 import path from 'node:path'
 import type { InvokeChannel, PushChannel } from '../shared/ipc'
-import { WEB_SERVER_PORT } from '../shared/web'
 
 const remoteChannels = new Set<InvokeChannel>([
   'auth:state',
@@ -29,6 +28,7 @@ const remoteChannels = new Set<InvokeChannel>([
   'session:cancel',
   'draft:take',
   'budget:get',
+  'remote:url',
 ])
 
 const contentTypes: Record<string, string> = {
@@ -70,7 +70,7 @@ export async function startWebServer(options: WebServerOptions): Promise<WebServ
   })
   server.on('close', unsubscribe)
 
-  await listen(server, options.port ?? WEB_SERVER_PORT)
+  await listen(server, options.port ?? 0)
   const address = server.address()
   if (!address || typeof address === 'string') throw new Error('web server did not bind to a TCP port')
 

@@ -28,6 +28,7 @@ import {
 } from './goose/sessions'
 import { onDraft } from './mcp/draftServer'
 import { listSessionHistory } from './sessionHistory'
+import { getRemoteUrl, onRemoteUrl } from './tailscale'
 import {
   getAuthMeta,
   getConversationRow,
@@ -84,6 +85,7 @@ export function registerIpc(): void {
     activity.notifyRowsChanged() // sidebar rows carry hasPendingDraft
   })
   onBudgetChange((budget: RateBudget) => broadcast('push:budget', budget))
+  onRemoteUrl((url) => broadcast('push:remote', url))
 
   // ----- settings -----
   handle('settings:get', () => settings().get())
@@ -317,4 +319,5 @@ export function registerIpc(): void {
 
   // ----- budget -----
   handle('budget:get', () => getBudget())
+  handle('remote:url', () => getRemoteUrl())
 }
