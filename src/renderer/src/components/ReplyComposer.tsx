@@ -25,6 +25,12 @@ export function ReplyComposer({
   const reply = useStore((state) =>
     kind === 'issue' ? state.reply : state.replyToPullRequest,
   )
+  const replyAndClose = useStore((state) =>
+    kind === 'issue' ? state.replyAndClose : state.replyAndClosePullRequest,
+  )
+  const closing = useStore((state) =>
+    kind === 'issue' ? state.closingIssue : state.closingPullRequest,
+  )
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const [mention, setMention] = useState<MentionRange | null>(null)
   const [mentionIndex, setMentionIndex] = useState(0)
@@ -158,14 +164,23 @@ export function ReplyComposer({
           }}
         />
       </div>
-      <div className="mt-1 flex justify-end">
+      <div className="mt-1 flex justify-end gap-2">
         <button
           className="rounded-lg bg-accent px-4 py-1.5 text-sm font-medium text-white disabled:opacity-40"
-          disabled={!ready || !text.trim() || composer?.sending}
+          disabled={!ready || !text.trim() || composer?.sending || closing}
           onClick={() => void reply()}
         >
           {composer?.sending ? 'Sending…' : 'Send to GitHub'}
         </button>
+        {conversation?.state === 'open' && (
+          <button
+            className="rounded-lg border border-gray-300 px-4 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40"
+            disabled={!ready || !text.trim() || composer?.sending || closing}
+            onClick={() => void replyAndClose()}
+          >
+            {closing ? 'Closing…' : composer?.sending ? 'Sending…' : 'Send & close'}
+          </button>
+        )}
       </div>
     </div>
   )

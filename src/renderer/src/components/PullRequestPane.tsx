@@ -70,9 +70,9 @@ function PullRequestHeader({ pullRequest }: { pullRequest: PullRequestDetail }):
         : 'bg-green-100 text-green-800'
 
   return (
-    <div className="shrink-0 border-b border-gray-200 px-5 py-3">
-      <div className="flex items-center gap-2">
-        <h1 className="min-w-0 flex-1 truncate text-[15px] font-semibold">
+    <div className="shrink-0 border-b border-gray-200 px-3 py-3 md:px-5">
+      <div className="flex flex-wrap items-center gap-2">
+        <h1 className="w-full text-[15px] font-semibold md:min-w-0 md:w-auto md:flex-1 md:truncate">
           <a href={url} title={`${url} (opens in browser)`} className="hover:text-accent hover:underline">
             {pullRequest.title}
           </a>
@@ -210,7 +210,7 @@ function PullRequestTranscript({ pullRequest }: { pullRequest: PullRequestDetail
   }, [pullRequest.nodeId, timeline.length])
 
   return (
-    <div className="space-y-3 px-5 py-4">
+    <div className="space-y-3 px-3 py-4 md:px-5">
       <Bubble
         author={pullRequest.author}
         avatar={pullRequest.authorAvatarUrl}

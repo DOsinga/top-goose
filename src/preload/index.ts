@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 import type { TopGooseApi } from '../shared/ipc'
 
 const api: TopGooseApi = {
+  isRemote: false,
   invoke: (channel, ...args) => ipcRenderer.invoke(channel, ...args),
   on: (channel, cb) => {
     const listener = (_event: Electron.IpcRendererEvent, payload: unknown): void => {

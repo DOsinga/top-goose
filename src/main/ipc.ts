@@ -3,7 +3,7 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 
 const execFileP = promisify(execFile)
-import type { InvokeMap } from '../shared/ipc'
+import type { InvokeChannel, InvokeMap, PushChannel } from '../shared/ipc'
 import type { ConversationLink, PendingDraft, RateBudget } from '../shared/types'
 import * as activity from './activity'
 import { authState, setPat, signOut } from './github/auth'
@@ -28,6 +28,7 @@ import {
 } from './goose/sessions'
 import { onDraft } from './mcp/draftServer'
 import { listSessionHistory } from './sessionHistory'
+import { getRemoteUrl, onRemoteUrl } from './tailscale'
 import {
   getAuthMeta,
   getConversationRow,
@@ -38,17 +39,36 @@ import {
   takePendingDraft,
 } from './store'
 
-function handle<C extends keyof InvokeMap>(
+type Handler = (...args: unknown[]) => unknown
+type PushListener = (channel: PushChannel, payload: unknown) => void
+
+const handlers = new Map<InvokeChannel, Handler>()
+const pushListeners = new Set<PushListener>()
+
+function handle<C extends InvokeChannel>(
   channel: C,
   handler: (...args: Parameters<InvokeMap[C]>) => Promise<ReturnType<InvokeMap[C]>> | ReturnType<InvokeMap[C]>,
 ): void {
+  handlers.set(channel, handler as Handler)
   ipcMain.handle(channel, (_event, ...args) => handler(...(args as Parameters<InvokeMap[C]>)))
 }
 
-function broadcast(channel: string, payload: unknown): void {
+function broadcast(channel: PushChannel, payload: unknown): void {
   for (const win of BrowserWindow.getAllWindows()) {
     win.webContents.send(channel, payload)
   }
+  for (const listener of pushListeners) listener(channel, payload)
+}
+
+export async function invokeHandler(channel: InvokeChannel, args: unknown[]): Promise<unknown> {
+  const handler = handlers.get(channel)
+  if (!handler) throw new Error(`unknown channel: ${channel}`)
+  return handler(...args)
+}
+
+export function onPush(listener: PushListener): () => void {
+  pushListeners.add(listener)
+  return () => pushListeners.delete(listener)
 }
 
 function rememberLinkedConversations(links: ConversationLink[]): void {
@@ -65,6 +85,7 @@ export function registerIpc(): void {
     activity.notifyRowsChanged() // sidebar rows carry hasPendingDraft
   })
   onBudgetChange((budget: RateBudget) => broadcast('push:budget', budget))
+  onRemoteUrl((url) => broadcast('push:remote', url))
 
   // ----- settings -----
   handle('settings:get', () => settings().get())
@@ -298,4 +319,5 @@ export function registerIpc(): void {
 
   // ----- budget -----
   handle('budget:get', () => getBudget())
+  handle('remote:url', () => getRemoteUrl())
 }

@@ -7,9 +7,8 @@ import type {
   RepoConfig,
   Settings,
 } from '../../../shared/types'
+import { api } from '../api'
 import { useStore } from '../store'
-
-const api = window.topGoose
 
 export function SettingsView(): React.JSX.Element {
   const [settings, setSettings] = useState<Settings | null>(null)
@@ -73,6 +72,13 @@ export function SettingsView(): React.JSX.Element {
           </div>
         </div>
         <RepoSection settings={settings} onSettings={setSettings} />
+        <div>
+          <h2 className="mb-2 text-sm font-semibold">Web access</h2>
+          <p className="text-xs text-gray-500">
+            When Tailscale is running, Top Goose automatically serves the app to your tailnet. The remote URL
+            appears in the footer. Keep this app running while using it from another device.
+          </p>
+        </div>
         <div className="flex items-center gap-4 border-t border-gray-200 pt-4">
           <ul className="flex-1 space-y-0.5 text-xs">
             <ChecklistItem ok={ready.auth} okText={`Signed in as @${auth?.login}`} todoText="Sign in to GitHub" />

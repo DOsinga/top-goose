@@ -77,6 +77,7 @@ beforeEach(() => {
     sidebarFilters: [],
     conversationFilters: [],
     gooseFilters: [],
+    assigneeFilter: 'viewer',
     pullRequestFilters: [],
     pullRequestStateFilter: null,
     workflowStatusFilter: null,
@@ -257,6 +258,22 @@ describe('Goose session list', () => {
       sessionRows: [session],
       sessionRowsLoading: false,
     })
+  })
+})
+
+describe('assignee filter', () => {
+  it.each([
+    ['issue', 'sidebarFilters'],
+    ['pullRequest', 'pullRequestFilters'],
+    ['conversations', 'conversationFilters'],
+    ['sessions', 'gooseFilters'],
+  ] as const)('activates the assigned filter in the %s view', (view, filters) => {
+    useStore.setState({ sidebarView: view })
+
+    useStore.getState().chooseAssigneeFilter('login:alexhancock')
+
+    expect(useStore.getState().assigneeFilter).toBe('login:alexhancock')
+    expect(useStore.getState()[filters]).toContain('assigned')
   })
 })
 
@@ -450,6 +467,111 @@ describe('issue selection', () => {
 })
 
 describe('GitHub replies', () => {
+  it('posts a reply before closing an issue', async () => {
+    const calls: string[] = []
+    invoke.mockImplementation((channel: string) => {
+      calls.push(channel)
+      if (channel === 'issue:reply') {
+        return Promise.resolve({
+          id: 9,
+          nodeId: 'comment-9',
+          author: 'me',
+          body: 'fixed',
+          createdAt: '2026-01-01T00:00:01Z',
+          updatedAt: '2026-01-01T00:00:01Z',
+        })
+      }
+      return Promise.resolve()
+    })
+    useStore.setState({
+      selectedNodeId: 'B',
+      issue: issue('B', 2),
+      composers: { B: { text: 'fixed', dirty: true, sending: false } },
+    })
+
+    await useStore.getState().replyAndClose()
+
+    expect(calls).toEqual(['issue:reply', 'issue:close'])
+    expect(useStore.getState().issue?.state).toBe('closed')
+  })
+
+  it('leaves an issue open when posting the reply fails', async () => {
+    invoke.mockImplementation((channel: string) => {
+      if (channel === 'issue:reply') return Promise.reject(new Error('post failed'))
+      return Promise.resolve()
+    })
+    useStore.setState({
+      selectedNodeId: 'B',
+      issue: issue('B', 2),
+      composers: { B: { text: 'fixed', dirty: true, sending: false } },
+    })
+
+    await useStore.getState().replyAndClose()
+
+    expect(invoke).not.toHaveBeenCalledWith('issue:close', expect.anything())
+    expect(useStore.getState().issue?.state).toBe('open')
+    expect(useStore.getState().composers.B).toEqual(
+      expect.objectContaining({ text: 'fixed', error: 'post failed' }),
+    )
+  })
+
+  it('does not close another issue selected while the reply is posting', async () => {
+    const posted = deferred<IssueComment>()
+    invoke.mockImplementation((channel: string) => {
+      if (channel === 'issue:reply') return posted.promise
+      return Promise.resolve()
+    })
+    useStore.setState({
+      selectedNodeId: 'B',
+      issue: issue('B', 2),
+      composers: { B: { text: 'fixed', dirty: true, sending: false } },
+    })
+
+    const posting = useStore.getState().replyAndClose()
+    useStore.setState({ selectedNodeId: 'C', issue: issue('C', 3) })
+    posted.resolve({
+      id: 10,
+      nodeId: 'comment-10',
+      author: 'me',
+      body: 'fixed',
+      createdAt: '2026-01-01T00:00:01Z',
+      updatedAt: '2026-01-01T00:00:01Z',
+    })
+    await posting
+
+    expect(invoke.mock.calls.filter(([channel]) => channel === 'issue:close')).toHaveLength(0)
+    expect(useStore.getState().issue?.state).toBe('open')
+  })
+
+  it('posts a reply before closing a pull request', async () => {
+    const calls: string[] = []
+    invoke.mockImplementation((channel: string) => {
+      calls.push(channel)
+      if (channel === 'pullRequest:reply') {
+        return Promise.resolve({
+          id: 9,
+          nodeId: 'comment-9',
+          author: 'me',
+          body: 'fixed',
+          createdAt: '2026-01-01T00:00:01Z',
+          updatedAt: '2026-01-01T00:00:01Z',
+        })
+      }
+      return Promise.resolve()
+    })
+    useStore.setState({
+      conversationKind: 'pullRequest',
+      selectedNodeId: 'PR',
+      pullRequest: pullRequest('PR', 7),
+      composers: { PR: { text: 'fixed', dirty: true, sending: false } },
+    })
+
+    await useStore.getState().replyAndClosePullRequest()
+
+    expect(calls).toEqual(['pullRequest:reply', 'pullRequest:close'])
+    expect(useStore.getState().pullRequest?.state).toBe('closed')
+  })
+
   it('allows only one in-flight post and preserves issue identity', async () => {
     const posted = deferred<IssueComment>()
     invoke.mockImplementation((channel: string) => {

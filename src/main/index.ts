@@ -3,9 +3,13 @@ import path from 'node:path'
 import * as activity from './activity'
 import { authState } from './github/auth'
 import { shutdownSessions } from './goose/sessions'
-import { registerIpc } from './ipc'
+import { invokeHandler, onPush, registerIpc } from './ipc'
 import { startDraftServer, stopDraftServer } from './mcp/draftServer'
 import { flushAllStores } from './store'
+import { startTailscale, stopTailscale } from './tailscale'
+import { startWebServer, type WebServer } from './webServer'
+
+let webServer: WebServer | undefined
 
 function appIconPath(): string {
   return app.isPackaged
@@ -53,6 +57,18 @@ app.whenReady().then(async () => {
   if (process.platform === 'darwin') app.dock?.setIcon(appIconPath())
   registerIpc()
   await startDraftServer()
+  try {
+    webServer = await startWebServer({
+      rendererDir: path.join(import.meta.dirname, '../renderer'),
+      devServerUrl: process.env.ELECTRON_RENDERER_URL,
+      invoke: invokeHandler,
+      onPush,
+    })
+    console.log(`Top Goose web access: http://127.0.0.1:${webServer.port}`)
+    await startTailscale(webServer.port)
+  } catch (error) {
+    console.error('Top Goose web access could not start:', error)
+  }
   createWindow()
 
   // start polling only when authenticated; renderer drives auth otherwise
@@ -72,5 +88,7 @@ app.on('before-quit', () => {
   activity.stop()
   shutdownSessions()
   stopDraftServer()
+  stopTailscale()
+  void webServer?.stop()
   flushAllStores()
 })

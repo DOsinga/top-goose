@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { coreTeam } from '../../../shared/coreTeam'
 import type { IssueDetail } from '../../../shared/types'
+import { api } from '../api'
 import { useStore } from '../store'
 import { ConversationLinks } from './ConversationLinks'
 import { Markdown } from './Markdown'
@@ -46,9 +47,9 @@ function IssueHeader({ issue }: { issue: IssueDetail }): React.JSX.Element {
   const starred = issue.labels.some((label) => label.name.toLowerCase() === 'starred')
 
   return (
-    <div className="shrink-0 border-b border-gray-200 px-5 py-3">
-      <div className="flex items-center gap-2">
-        <h1 className="min-w-0 flex-1 truncate text-[15px] font-semibold">
+    <div className="shrink-0 border-b border-gray-200 px-3 py-3 md:px-5">
+      <div className="flex flex-wrap items-center gap-2">
+        <h1 className="w-full text-[15px] font-semibold md:min-w-0 md:w-auto md:flex-1 md:truncate">
           <a href={url} title={`${url} (opens in browser)`} className="hover:text-accent hover:underline">
             {issue.title}
           </a>
@@ -75,6 +76,10 @@ function IssueHeader({ issue }: { issue: IssueDetail }): React.JSX.Element {
               </option>
             ))}
           </select>
+        ) : api.isRemote ? (
+          <span className="shrink-0 rounded-full border border-dashed border-gray-300 px-2 py-0.5 text-[11px] text-gray-400">
+            no board
+          </span>
         ) : (
           <button
             onClick={() => setView('settings')}
@@ -178,7 +183,7 @@ function Transcript({ issue }: { issue: IssueDetail }): React.JSX.Element {
   }, [issue.nodeId, issue.comments.length])
 
   return (
-    <div className="space-y-3 px-5 py-4">
+    <div className="space-y-3 px-3 py-4 md:px-5">
       <Bubble
         author={issue.author}
         avatar={issue.authorAvatarUrl}

@@ -13,9 +13,8 @@ import type {
   SessionHistoryRow,
   SidebarView,
 } from '../../shared/types'
-import type { AttentionFilter, ConversationFilter } from '../../shared/issueFilters'
-
-const api = window.topGoose
+import type { AssigneeFilter, AttentionFilter, ConversationFilter } from '../../shared/issueFilters'
+import { api } from './api'
 
 export type ComposerState = {
   text: string
@@ -45,6 +44,7 @@ export type PullRequestFilter =
   | 'starred'
 export type PullRequestStateFilter = 'ready' | 'draft' | 'approved' | 'changesRequested' | 'reviewRequired'
 type NavigationEntry = { kind: ConversationKind; nodeId: string; sidebarView: SidebarView }
+export type MobilePane = 'list' | 'conversation' | 'goose'
 
 export type State = {
   auth: AuthState | null
@@ -58,6 +58,7 @@ export type State = {
   sidebarFilters: SidebarFilter[]
   conversationFilters: SidebarFilter[]
   gooseFilters: AttentionFilter[]
+  assigneeFilter: AssigneeFilter
   workflowStatusFilter: string | null
   pullRequestFilters: PullRequestFilter[]
   pullRequestStateFilter: PullRequestStateFilter | null
@@ -81,6 +82,7 @@ export type State = {
   generation: number
   navigationHistory: NavigationEntry[]
   navigationIndex: number
+  mobilePane: MobilePane
 
   init: () => () => void
   selectIssue: (nodeId: string, recordHistory?: boolean, sidebarView?: SidebarView) => Promise<void>
@@ -91,8 +93,10 @@ export type State = {
   goForward: () => Promise<void>
   refreshIssue: () => Promise<void>
   refreshPullRequest: () => Promise<void>
-  reply: () => Promise<void>
-  replyToPullRequest: () => Promise<void>
+  reply: () => Promise<boolean>
+  replyAndClose: () => Promise<void>
+  replyToPullRequest: () => Promise<boolean>
+  replyAndClosePullRequest: () => Promise<void>
   closeIssue: () => Promise<void>
   approvePullRequest: () => Promise<void>
   closePullRequest: () => Promise<void>
@@ -111,10 +115,13 @@ export type State = {
   toggleSidebarFilter: (filter: SidebarFilter) => void
   toggleConversationFilter: (filter: SidebarFilter) => void
   toggleGooseFilter: (filter: AttentionFilter) => void
+  setAssigneeFilter: (filter: AssigneeFilter) => void
+  chooseAssigneeFilter: (filter: AssigneeFilter) => void
   setWorkflowStatusFilter: (status: string | null) => void
   setSidebarView: (view: SidebarView) => void
   togglePullRequestFilter: (filter: PullRequestFilter) => void
   setPullRequestStateFilter: (filter: PullRequestStateFilter | null) => void
+  setMobilePane: (pane: MobilePane) => void
 }
 
 const emptyComposer: ComposerState = { text: '', dirty: false, sending: false }
@@ -141,6 +148,7 @@ export const useStore = create<State>((set, get) => ({
   sidebarFilters: [],
   conversationFilters: [],
   gooseFilters: [],
+  assigneeFilter: 'viewer',
   workflowStatusFilter: null,
   pullRequestFilters: [],
   pullRequestStateFilter: null,
@@ -164,11 +172,12 @@ export const useStore = create<State>((set, get) => ({
   generation: 0,
   navigationHistory: [],
   navigationIndex: -1,
+  mobilePane: 'list',
 
   init: () => {
     void api.invoke('auth:state').then((auth) => {
       set({ auth })
-      if (!auth.authenticated) set({ view: 'settings' })
+      if (!auth.authenticated && !api.isRemote) set({ view: 'settings' })
     })
     void api.invoke('sidebar:rows').then((rows) => set({ rows: sortRows(rows) }))
     void api.invoke('budget:get').then((budget) => set({ budget }))
@@ -192,6 +201,7 @@ export const useStore = create<State>((set, get) => ({
           sessionRowsError: null,
           conversationFilters: [],
           gooseFilters: [],
+          assigneeFilter: 'viewer',
           workflowStatusFilter: null,
           pullRequestFilters: [],
           pullRequestStateFilter: null,
@@ -210,6 +220,7 @@ export const useStore = create<State>((set, get) => ({
           gooseInputs: {},
           navigationHistory: [],
           navigationIndex: -1,
+          mobilePane: 'list',
           generation: state.generation + 1,
         })),
       ),
@@ -247,6 +258,7 @@ export const useStore = create<State>((set, get) => ({
       assigneeSaving: false,
       closingIssue: false,
       view: 'main',
+      mobilePane: 'conversation',
     }))
     void api.invoke('issue:markRead', nodeId)
 
@@ -327,6 +339,7 @@ export const useStore = create<State>((set, get) => ({
       approvalSaving: false,
       closingPullRequest: false,
       view: 'main',
+      mobilePane: 'conversation',
     }))
     void api.invoke('issue:markRead', nodeId)
 
@@ -457,11 +470,11 @@ export const useStore = create<State>((set, get) => ({
   reply: async () => {
     const { selectedNodeId, composers, issue } = get()
     const generation = get().generation
-    if (!selectedNodeId || !issue || issue.nodeId !== selectedNodeId) return
+    if (!selectedNodeId || !issue || issue.nodeId !== selectedNodeId) return false
     const composer = composers[selectedNodeId] ?? emptyComposer
-    if (composer.sending) return
+    if (composer.sending) return false
     const body = composer.text.trim()
-    if (!body) return
+    if (!body) return false
     set({
       composers: {
         ...composers,
@@ -487,6 +500,7 @@ export const useStore = create<State>((set, get) => ({
                   : state.issue,
             },
       )
+      return true
     } catch (err) {
       set((state) =>
         state.generation !== generation
@@ -502,17 +516,23 @@ export const useStore = create<State>((set, get) => ({
               },
             },
       )
+      return false
     }
+  },
+
+  replyAndClose: async () => {
+    const nodeId = get().selectedNodeId
+    if (await get().reply() && get().selectedNodeId === nodeId) await get().closeIssue()
   },
 
   replyToPullRequest: async () => {
     const { selectedNodeId, composers, pullRequest } = get()
     const generation = get().generation
-    if (!selectedNodeId || !pullRequest || pullRequest.nodeId !== selectedNodeId) return
+    if (!selectedNodeId || !pullRequest || pullRequest.nodeId !== selectedNodeId) return false
     const composer = composers[selectedNodeId] ?? emptyComposer
-    if (composer.sending) return
+    if (composer.sending) return false
     const body = composer.text.trim()
-    if (!body) return
+    if (!body) return false
     set({
       composers: {
         ...composers,
@@ -538,6 +558,7 @@ export const useStore = create<State>((set, get) => ({
                   : state.pullRequest,
             },
       )
+      return true
     } catch (err) {
       set((state) =>
         state.generation !== generation
@@ -553,6 +574,14 @@ export const useStore = create<State>((set, get) => ({
               },
             },
       )
+      return false
+    }
+  },
+
+  replyAndClosePullRequest: async () => {
+    const nodeId = get().selectedNodeId
+    if (await get().replyToPullRequest() && get().selectedNodeId === nodeId) {
+      await get().closePullRequest()
     }
   },
 
@@ -858,6 +887,7 @@ export const useStore = create<State>((set, get) => ({
         sessionRowsError: null,
         conversationFilters: [],
         gooseFilters: [],
+        assigneeFilter: 'viewer',
         workflowStatusFilter: null,
         pullRequestFilters: [],
         pullRequestStateFilter: null,
@@ -876,6 +906,7 @@ export const useStore = create<State>((set, get) => ({
         gooseInputs: {},
         navigationHistory: [],
         navigationIndex: -1,
+        mobilePane: 'list',
         generation: state.generation + 1,
       }
     }),
@@ -897,10 +928,43 @@ export const useStore = create<State>((set, get) => ({
         ? state.gooseFilters.filter((value) => value !== filter)
         : [...state.gooseFilters, filter],
     })),
+  setAssigneeFilter: (assigneeFilter) => set({ assigneeFilter }),
+  chooseAssigneeFilter: (assigneeFilter) => {
+    const view = get().sidebarView
+    if (view === 'issue') {
+      set((state) => ({
+        assigneeFilter,
+        sidebarFilters: state.sidebarFilters.includes('assigned')
+          ? state.sidebarFilters
+          : [...state.sidebarFilters, 'assigned'],
+      }))
+    } else if (view === 'pullRequest') {
+      set((state) => ({
+        assigneeFilter,
+        pullRequestFilters: state.pullRequestFilters.includes('assigned')
+          ? state.pullRequestFilters
+          : [...state.pullRequestFilters, 'assigned'],
+      }))
+    } else if (view === 'conversations') {
+      set((state) => ({
+        assigneeFilter,
+        conversationFilters: state.conversationFilters.includes('assigned')
+          ? state.conversationFilters
+          : [...state.conversationFilters, 'assigned'],
+      }))
+    } else {
+      set((state) => ({
+        assigneeFilter,
+        gooseFilters: state.gooseFilters.includes('assigned')
+          ? state.gooseFilters
+          : [...state.gooseFilters, 'assigned'],
+      }))
+    }
+  },
   setWorkflowStatusFilter: (workflowStatusFilter) => set({ workflowStatusFilter }),
   setSidebarView: (sidebarView) => {
     if (sidebarView === 'sessions' || sidebarView === 'conversations') {
-      set({ sidebarView })
+      set({ sidebarView, mobilePane: 'list' })
       if (sidebarView === 'sessions' && !get().sessionRowsLoading) void get().loadSessionHistory()
       return
     }
@@ -915,6 +979,7 @@ export const useStore = create<State>((set, get) => ({
       pullRequestLoading: false,
       issueError: null,
       pullRequestError: null,
+      mobilePane: 'list',
     })
   },
   togglePullRequestFilter: (filter) =>
@@ -924,6 +989,7 @@ export const useStore = create<State>((set, get) => ({
         : [...state.pullRequestFilters, filter],
     })),
   setPullRequestStateFilter: (pullRequestStateFilter) => set({ pullRequestStateFilter }),
+  setMobilePane: (mobilePane) => set({ mobilePane }),
 }))
 
 function replaceRowLabels(

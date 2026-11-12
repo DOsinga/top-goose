@@ -50,6 +50,10 @@ Browse to your local clone; the GitHub repository is derived from its `origin` r
 
 Optionally pick a Projects V2 board plus its `Status` and snooze (date) fields — that lights up the status dropdown in the issue header, the status tags in the sidebar, and snoozing (snoozed issues sink to the bottom until their date passes). Settings also has separate instruction fields for issue and pull request sessions; Top Goose appends the matching text to Goose's system prompt automatically.
 
+## Web access over Tailscale
+
+When Tailscale is installed and running, Top Goose starts Tailscale Serve automatically and prints the remote HTTPS URL in its footer. Open that URL on another device in your tailnet. GitHub credentials, repository settings, and the Goose process stay on the Mac; the browser uses the same renderer over an HTTP/SSE bridge. Tailscale Serve supplies the authenticated tailnet identity, and Top Goose does not listen on the LAN. The remote server stops with Top Goose, so keep the desktop app running while using the web view. Settings and sign-in remain desktop-only.
+
 ## How it talks to GitHub
 
 - Change detection polls `/notifications` with `If-None-Match`; an idle repository costs zero rate limit.

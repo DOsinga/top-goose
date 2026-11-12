@@ -24,6 +24,7 @@ export type RepoConfig = {
 export type Settings = {
   /** explicit goose binary path override */
   goosePath?: string
+  sidebarWidth?: number
   /** instructions appended to issue sessions */
   issueInstructions?: string
   /** instructions appended to pull request sessions */
