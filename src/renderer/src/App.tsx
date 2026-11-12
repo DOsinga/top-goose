@@ -92,7 +92,7 @@ function SidebarColumn({ visible }: { visible: boolean }): React.JSX.Element {
 
   return (
     <div
-      className={`${visible ? 'flex' : 'hidden'} min-w-0 flex-1 md:relative md:flex-none`}
+      className={`${visible ? 'flex' : 'hidden'} min-w-0 flex-1 md:relative md:flex md:flex-none`}
       style={viewportWidth >= 768 ? { width } : undefined}
     >
       <Sidebar />
