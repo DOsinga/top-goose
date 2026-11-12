@@ -7,6 +7,10 @@ import { Sidebar } from './components/Sidebar'
 import { api } from './api'
 import { useStore } from './store'
 
+const DEFAULT_SIDEBAR_WIDTH = 288
+const MIN_SIDEBAR_WIDTH = 240
+const MAX_SIDEBAR_WIDTH = 520
+
 export function App(): React.JSX.Element {
   const init = useStore((s) => s.init)
   const view = useStore((s) => s.view)
@@ -49,9 +53,7 @@ export function App(): React.JSX.Element {
         <SettingsView />
       ) : (
         <div className="flex min-h-0 flex-1">
-          <div className={`${mobilePane === 'list' ? 'flex' : 'hidden'} min-w-0 flex-1 md:contents`}>
-            <Sidebar />
-          </div>
+          <SidebarColumn visible={mobilePane === 'list'} />
           <div className={`${mobilePane === 'conversation' ? 'flex' : 'hidden'} min-w-0 flex-1 md:contents`}>
             {conversationKind === 'issue' ? <IssuePane /> : <PullRequestPane />}
           </div>
@@ -64,6 +66,68 @@ export function App(): React.JSX.Element {
       {view === 'main' && (!api.isRemote || auth?.authenticated) && <MobileNavigation />}
     </div>
   )
+}
+
+function SidebarColumn({ visible }: { visible: boolean }): React.JSX.Element {
+  const [preferredWidth, setPreferredWidth] = useState(DEFAULT_SIDEBAR_WIDTH)
+  const [viewportWidth, setViewportWidth] = useState(window.innerWidth)
+  const width = clampSidebarWidth(preferredWidth, viewportWidth)
+
+  useEffect(() => {
+    const updateViewportWidth = (): void => setViewportWidth(window.innerWidth)
+    window.addEventListener('resize', updateViewportWidth)
+    return () => window.removeEventListener('resize', updateViewportWidth)
+  }, [])
+  useEffect(() => {
+    void api.invoke('settings:get').then((settings) => {
+      if (settings.sidebarWidth) setPreferredWidth(settings.sidebarWidth)
+    })
+  }, [])
+
+  const resizeTo = (clientX: number): number => {
+    const nextWidth = clampSidebarWidth(clientX, window.innerWidth)
+    setPreferredWidth(nextWidth)
+    return nextWidth
+  }
+
+  return (
+    <div
+      className={`${visible ? 'flex' : 'hidden'} min-w-0 flex-1 md:relative md:flex-none`}
+      style={viewportWidth >= 768 ? { width } : undefined}
+    >
+      <Sidebar />
+      <button
+        type="button"
+        aria-label="Resize issue list"
+        className="group absolute -right-1 top-0 z-10 hidden h-full w-2 cursor-col-resize touch-none select-none md:block"
+        onPointerDown={(event) => {
+          event.currentTarget.setPointerCapture(event.pointerId)
+          resizeTo(event.clientX)
+        }}
+        onPointerMove={(event) => {
+          if (event.currentTarget.hasPointerCapture(event.pointerId)) resizeTo(event.clientX)
+        }}
+        onPointerUp={(event) => {
+          event.currentTarget.releasePointerCapture(event.pointerId)
+          void api.invoke('settings:update', { sidebarWidth: resizeTo(event.clientX) })
+        }}
+        onKeyDown={(event) => {
+          if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+          event.preventDefault()
+          const nextWidth = clampSidebarWidth(width + (event.key === 'ArrowLeft' ? -16 : 16), viewportWidth)
+          setPreferredWidth(nextWidth)
+          void api.invoke('settings:update', { sidebarWidth: nextWidth })
+        }}
+      >
+        <span className="mx-auto block h-full w-px bg-transparent group-hover:bg-accent group-focus:bg-accent" />
+      </button>
+    </div>
+  )
+}
+
+function clampSidebarWidth(width: number, viewportWidth: number): number {
+  const availableWidth = Math.max(MIN_SIDEBAR_WIDTH, viewportWidth - 640)
+  return Math.min(Math.max(width, MIN_SIDEBAR_WIDTH), MAX_SIDEBAR_WIDTH, availableWidth)
 }
 
 function RemoteFooter(): React.JSX.Element | null {

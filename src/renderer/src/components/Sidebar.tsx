@@ -44,9 +44,14 @@ function ConversationsSidebar(): React.JSX.Element {
   const visible = rows.filter((row) =>
     filters.every((filter) => matchesConversationFilter(row, filter, login, assigneeFilter)),
   )
+  const rowsForAssigneeCount = rows.filter((row) =>
+    filters
+      .filter((filter) => filter !== 'assigned')
+      .every((filter) => matchesConversationFilter(row, filter, login, assigneeFilter)),
+  )
 
   return (
-    <div className="flex w-full shrink-0 flex-col border-r border-gray-200 bg-gray-50 md:w-72">
+    <div className="flex w-full shrink-0 flex-col border-r border-gray-200 bg-gray-50">
       <div className="flex h-[45px] shrink-0 items-center border-b border-gray-200 px-3">
         <span className="text-xs font-medium text-gray-700">Conversations</span>
         <span className="ml-1 text-[11px] text-gray-400">
@@ -65,7 +70,7 @@ function ConversationsSidebar(): React.JSX.Element {
             />
           ))}
           <AssigneeFilterButton
-            rows={rows}
+            rows={rowsForAssigneeCount}
             active={filters.includes('assigned')}
             onToggle={() => toggleFilter('assigned')}
           />
@@ -158,7 +163,7 @@ function ConversationSidebar({ kind }: { kind: ConversationKind }): React.JSX.El
   }
 
   return (
-    <div className="flex w-full shrink-0 flex-col border-r border-gray-200 bg-gray-50 md:w-72">
+    <div className="flex w-full shrink-0 flex-col border-r border-gray-200 bg-gray-50">
       <SearchBox query={searchQuery} setQuery={setSearchQuery} />
       {!searching && (kind === 'issue' ? <IssueFilters rows={rows} /> : <PullRequestFilters rows={rows} />)}
       <div className="flex-1 overflow-y-auto">
@@ -276,13 +281,24 @@ function IssueFilters({ rows }: { rows: CachedRow[] }): React.JSX.Element {
   const toggleFilter = useStore((state) => state.toggleSidebarFilter)
   const statusFilter = useStore((state) => state.workflowStatusFilter)
   const setStatusFilter = useStore((state) => state.setWorkflowStatusFilter)
+  const assigneeFilter = useStore((state) => state.assigneeFilter)
   const login = useStore((state) => state.auth?.login)
   const statuses = [...new Set(rows.flatMap((row) => (row.workflowStatus ? [row.workflowStatus] : [])))].sort()
   const statusOptions =
     statusFilter && statusFilter !== NO_BOARD_STATUS && !statuses.includes(statusFilter)
       ? [statusFilter, ...statuses]
       : statuses
-  const noStatusCount = rows.filter((row) => !row.workflowStatus).length
+  const rowsMatchingPills = rows.filter((row) =>
+    filters.every((filter) => matchesConversationFilter(row, filter, login, assigneeFilter)),
+  )
+  const rowsForAssigneeCount = rows.filter(
+    (row) =>
+      filters
+        .filter((filter) => filter !== 'assigned')
+        .every((filter) => matchesConversationFilter(row, filter, login, assigneeFilter)) &&
+      matchesWorkflowStatus(row, statusFilter),
+  )
+  const noStatusCount = rowsMatchingPills.filter((row) => !row.workflowStatus).length
   return (
     <FilterArea>
       <div className="flex flex-wrap gap-1">
@@ -296,7 +312,7 @@ function IssueFilters({ rows }: { rows: CachedRow[] }): React.JSX.Element {
           />
         ))}
         <AssigneeFilterButton
-          rows={rows}
+          rows={rowsForAssigneeCount}
           active={filters.includes('assigned')}
           onToggle={() => toggleFilter('assigned')}
         />
@@ -313,10 +329,10 @@ function IssueFilters({ rows }: { rows: CachedRow[] }): React.JSX.Element {
         value={statusFilter ?? ''}
         onChange={(event) => setStatusFilter(event.target.value || null)}
       >
-        <option value="">All board statuses ({rows.length})</option>
+        <option value="">All board statuses ({rowsMatchingPills.length})</option>
         {statusOptions.map((status) => (
           <option key={status} value={status}>
-            {status} ({rows.filter((row) => row.workflowStatus === status).length})
+            {status} ({rowsMatchingPills.filter((row) => row.workflowStatus === status).length})
           </option>
         ))}
         {(noStatusCount > 0 || statusFilter === NO_BOARD_STATUS) && (
@@ -349,6 +365,12 @@ function PullRequestFilters({ rows }: { rows: CachedRow[] }): React.JSX.Element 
     changesRequested: (row) => row.reviewDecision === 'CHANGES_REQUESTED',
     reviewRequired: (row) => row.reviewDecision === 'REVIEW_REQUIRED',
   }
+  const rowsMatchingPills = rows.filter((row) => filters.every((filter) => passes[filter](row)))
+  const rowsForAssigneeCount = rows.filter(
+    (row) =>
+      filters.filter((filter) => filter !== 'assigned').every((filter) => passes[filter](row)) &&
+      (!stateFilter || passesState[stateFilter](row)),
+  )
   return (
     <FilterArea>
       <div className="flex flex-wrap gap-1">
@@ -359,7 +381,7 @@ function PullRequestFilters({ rows }: { rows: CachedRow[] }): React.JSX.Element 
           onClick={() => toggleFilter('reviewRequested')}
         />
         <AssigneeFilterButton
-          rows={rows}
+          rows={rowsForAssigneeCount}
           active={filters.includes('assigned')}
           onToggle={() => toggleFilter('assigned')}
         />
@@ -379,14 +401,16 @@ function PullRequestFilters({ rows }: { rows: CachedRow[] }): React.JSX.Element 
         value={stateFilter ?? ''}
         onChange={(event) => setStateFilter((event.target.value || null) as PullRequestStateFilter | null)}
       >
-        <option value="">All pull requests ({rows.length})</option>
-        <option value="ready">Ready for review ({rows.filter(passesState.ready).length})</option>
-        <option value="draft">Draft ({rows.filter(passesState.draft).length})</option>
-        <option value="approved">Approved ({rows.filter(passesState.approved).length})</option>
+        <option value="">All pull requests ({rowsMatchingPills.length})</option>
+        <option value="ready">Ready for review ({rowsMatchingPills.filter(passesState.ready).length})</option>
+        <option value="draft">Draft ({rowsMatchingPills.filter(passesState.draft).length})</option>
+        <option value="approved">Approved ({rowsMatchingPills.filter(passesState.approved).length})</option>
         <option value="changesRequested">
-          Changes requested ({rows.filter(passesState.changesRequested).length})
+          Changes requested ({rowsMatchingPills.filter(passesState.changesRequested).length})
         </option>
-        <option value="reviewRequired">Review required ({rows.filter(passesState.reviewRequired).length})</option>
+        <option value="reviewRequired">
+          Review required ({rowsMatchingPills.filter(passesState.reviewRequired).length})
+        </option>
       </select>
     </FilterArea>
   )
@@ -410,8 +434,14 @@ function filterIssues(
   return rows.filter(
     (row) =>
       filters.every((filter) => matchesConversationFilter(row, filter, login, assigneeFilter)) &&
-      (statusFilter === null ||
-        (statusFilter === NO_BOARD_STATUS ? !row.workflowStatus : row.workflowStatus === statusFilter)),
+      matchesWorkflowStatus(row, statusFilter),
+  )
+}
+
+function matchesWorkflowStatus(row: CachedRow, statusFilter: string | null): boolean {
+  return (
+    statusFilter === null ||
+    (statusFilter === NO_BOARD_STATUS ? !row.workflowStatus : row.workflowStatus === statusFilter)
   )
 }
 

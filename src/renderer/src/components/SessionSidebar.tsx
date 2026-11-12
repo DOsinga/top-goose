@@ -21,6 +21,11 @@ export function SessionSidebar(): React.JSX.Element {
     const conversation = conversationsByNode.get(row.nodeId)
     return conversation ? [conversation] : []
   })
+  const rowsForAssigneeCount = sessionConversations.filter((conversation) =>
+    filters
+      .filter((filter) => filter !== 'assigned')
+      .every((filter) => matchesAttentionFilter(conversation, filter, login, assigneeFilter)),
+  )
   const filteredRows = rows.filter((row) => {
     const conversation = conversationsByNode.get(row.nodeId)
     return (
@@ -36,7 +41,7 @@ export function SessionSidebar(): React.JSX.Element {
   ) as Record<Exclude<AttentionFilter, 'assigned'>, number>
 
   return (
-    <div className="flex w-full shrink-0 flex-col border-r border-gray-200 bg-gray-50 md:w-72">
+    <div className="flex w-full shrink-0 flex-col border-r border-gray-200 bg-gray-50">
       <div className="flex h-[45px] shrink-0 items-center border-b border-gray-200 px-3">
         <span className="text-xs font-medium text-gray-700">Goose</span>
         <span className="ml-1 text-[11px] text-gray-400">
@@ -73,7 +78,7 @@ export function SessionSidebar(): React.JSX.Element {
           </button>
         ))}
         <AssigneeFilterButton
-          rows={sessionConversations}
+          rows={rowsForAssigneeCount}
           active={filters.includes('assigned')}
           onToggle={() => toggleFilter('assigned')}
         />

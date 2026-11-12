@@ -21,7 +21,8 @@ export function AssigneeFilterButton({
   const login = useStore((state) => state.auth?.login)
   const viewer = coreTeam.find((member) => member.github.toLowerCase() === login?.toLowerCase())
   const others = coreTeam.filter((member) => member !== viewer)
-  const count = rows.filter((row) => matchesAssigneeFilter(row, filter, login)).length
+  const countFilter = active ? filter : 'viewer'
+  const count = rows.filter((row) => matchesAssigneeFilter(row, countFilter, login)).length
   const label = assigneeLabel(filter, login)
 
   return (
