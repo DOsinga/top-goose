@@ -3,6 +3,7 @@ import type { SessionHistoryRow } from '../../../shared/types'
 import { conversationUrl, shouldNavigateInside } from '../internalLinks'
 import { useStore } from '../store'
 import { timeAgo } from '../time'
+import { AssigneeFilterButton } from './AssigneeFilter'
 
 export function SessionSidebar(): React.JSX.Element {
   const rows = useStore((state) => state.sessionRows)
@@ -12,22 +13,27 @@ export function SessionSidebar(): React.JSX.Element {
   const selected = useStore((state) => state.selectedNodeId)
   const filters = useStore((state) => state.gooseFilters)
   const toggleFilter = useStore((state) => state.toggleGooseFilter)
+  const assigneeFilter = useStore((state) => state.assigneeFilter)
   const login = useStore((state) => state.auth?.login)
   const load = useStore((state) => state.loadSessionHistory)
   const conversationsByNode = new Map(conversations.map((row) => [row.nodeId, row]))
+  const sessionConversations = rows.flatMap((row) => {
+    const conversation = conversationsByNode.get(row.nodeId)
+    return conversation ? [conversation] : []
+  })
   const filteredRows = rows.filter((row) => {
     const conversation = conversationsByNode.get(row.nodeId)
-    return !!conversation && filters.every((filter) => matchesAttentionFilter(conversation, filter, login))
+    return (
+      !!conversation &&
+      filters.every((filter) => matchesAttentionFilter(conversation, filter, login, assigneeFilter))
+    )
   })
   const counts = Object.fromEntries(
-    (['unread', 'unreplied', 'assigned'] as const).map((filter) => [
+    (['unread', 'unreplied'] as const).map((filter) => [
       filter,
-      rows.filter((row) => {
-        const conversation = conversationsByNode.get(row.nodeId)
-        return !!conversation && matchesAttentionFilter(conversation, filter, login)
-      }).length,
+      sessionConversations.filter((conversation) => matchesAttentionFilter(conversation, filter, login)).length,
     ]),
-  ) as Record<AttentionFilter, number>
+  ) as Record<Exclude<AttentionFilter, 'assigned'>, number>
 
   return (
     <div className="flex w-full shrink-0 flex-col border-r border-gray-200 bg-gray-50 md:w-72">
@@ -46,8 +52,8 @@ export function SessionSidebar(): React.JSX.Element {
           {loading ? '…' : '↻'}
         </button>
       </div>
-      <div className="flex shrink-0 gap-1 border-b border-gray-200 px-2 py-1.5">
-        {(['unread', 'unreplied', 'assigned'] as const).map((filter) => (
+      <div className="flex shrink-0 flex-wrap gap-1 border-b border-gray-200 px-2 py-1.5">
+        {(['unread', 'unreplied'] as const).map((filter) => (
           <button
             key={filter}
             type="button"
@@ -66,6 +72,11 @@ export function SessionSidebar(): React.JSX.Element {
             )}
           </button>
         ))}
+        <AssigneeFilterButton
+          rows={sessionConversations}
+          active={filters.includes('assigned')}
+          onToggle={() => toggleFilter('assigned')}
+        />
       </div>
       <div className="flex-1 overflow-y-auto">
         {loading && rows.length === 0 && <div className="p-4 text-sm text-gray-400">Loading sessions…</div>}

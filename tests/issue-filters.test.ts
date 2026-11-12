@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   isStarred,
   isUnreplied,
+  matchesAssigneeFilter,
   matchesAttentionFilter,
   matchesConversationFilter,
 } from '../src/shared/issueFilters'
@@ -87,6 +88,20 @@ describe('attention filters', () => {
     expect(
       matchesAttentionFilter(issue({ commentCount: 5, commentCountAtRead: 5 }), 'unread', 'DOsinga'),
     ).toBe(false)
+  })
+})
+
+describe('assignee filter', () => {
+  it('matches the viewer, a core member, anyone, and nobody', () => {
+    const assigned = issue({ assignees: ['alexhancock'] })
+    const unassigned = issue()
+
+    expect(matchesAssigneeFilter(assigned, 'viewer', 'DOsinga')).toBe(false)
+    expect(matchesAssigneeFilter(assigned, 'login:alexhancock', 'DOsinga')).toBe(true)
+    expect(matchesAssigneeFilter(assigned, 'any', 'DOsinga')).toBe(true)
+    expect(matchesAssigneeFilter(assigned, 'none', 'DOsinga')).toBe(false)
+    expect(matchesAssigneeFilter(unassigned, 'any', 'DOsinga')).toBe(false)
+    expect(matchesAssigneeFilter(unassigned, 'none', 'DOsinga')).toBe(true)
   })
 })
 

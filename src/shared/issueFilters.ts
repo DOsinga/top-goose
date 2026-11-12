@@ -2,6 +2,7 @@ import type { CachedRow } from './types'
 
 export type AttentionFilter = 'unread' | 'unreplied' | 'assigned'
 export type ConversationFilter = AttentionFilter | 'starred'
+export type AssigneeFilter = 'viewer' | 'any' | 'none' | `login:${string}`
 
 export function isStarred(row: CachedRow): boolean {
   return !!row.labels?.some((label) => label.name.toLowerCase() === 'starred')
@@ -25,12 +26,33 @@ export function isUnreplied(row: CachedRow, login?: string): boolean {
   return !!lastVoice && lastVoice.toLowerCase() !== login.toLowerCase()
 }
 
-export function matchesAttentionFilter(row: CachedRow, filter: AttentionFilter, login?: string): boolean {
-  if (filter === 'unread') return unreadCount(row) !== 0
-  if (filter === 'unreplied') return isUnreplied(row, login)
+export function matchesAssigneeFilter(
+  row: CachedRow,
+  filter: AssigneeFilter,
+  viewerLogin?: string,
+): boolean {
+  if (filter === 'any') return !!row.assignees?.length
+  if (filter === 'none') return !row.assignees?.length
+  const login = filter === 'viewer' ? viewerLogin : filter.slice('login:'.length)
   return includesLogin(row.assignees, login)
 }
 
-export function matchesConversationFilter(row: CachedRow, filter: ConversationFilter, login?: string): boolean {
-  return filter === 'starred' ? isStarred(row) : matchesAttentionFilter(row, filter, login)
+export function matchesAttentionFilter(
+  row: CachedRow,
+  filter: AttentionFilter,
+  login?: string,
+  assigneeFilter: AssigneeFilter = 'viewer',
+): boolean {
+  if (filter === 'unread') return unreadCount(row) !== 0
+  if (filter === 'unreplied') return isUnreplied(row, login)
+  return matchesAssigneeFilter(row, assigneeFilter, login)
+}
+
+export function matchesConversationFilter(
+  row: CachedRow,
+  filter: ConversationFilter,
+  login?: string,
+  assigneeFilter: AssigneeFilter = 'viewer',
+): boolean {
+  return filter === 'starred' ? isStarred(row) : matchesAttentionFilter(row, filter, login, assigneeFilter)
 }

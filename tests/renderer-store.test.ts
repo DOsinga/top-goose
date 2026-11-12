@@ -77,6 +77,7 @@ beforeEach(() => {
     sidebarFilters: [],
     conversationFilters: [],
     gooseFilters: [],
+    assigneeFilter: 'viewer',
     pullRequestFilters: [],
     pullRequestStateFilter: null,
     workflowStatusFilter: null,
@@ -257,6 +258,22 @@ describe('Goose session list', () => {
       sessionRows: [session],
       sessionRowsLoading: false,
     })
+  })
+})
+
+describe('assignee filter', () => {
+  it.each([
+    ['issue', 'sidebarFilters'],
+    ['pullRequest', 'pullRequestFilters'],
+    ['conversations', 'conversationFilters'],
+    ['sessions', 'gooseFilters'],
+  ] as const)('activates the assigned filter in the %s view', (view, filters) => {
+    useStore.setState({ sidebarView: view })
+
+    useStore.getState().chooseAssigneeFilter('login:alexhancock')
+
+    expect(useStore.getState().assigneeFilter).toBe('login:alexhancock')
+    expect(useStore.getState()[filters]).toContain('assigned')
   })
 })
 

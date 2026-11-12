@@ -3,8 +3,10 @@ import { isUnsolicitedPullRequest } from '../../../shared/pullRequestFilters'
 import {
   includesLogin,
   isStarred,
+  matchesAssigneeFilter,
   matchesConversationFilter,
   unreadCount,
+  type AssigneeFilter,
 } from '../../../shared/issueFilters'
 import type { CachedRow, ConversationKind } from '../../../shared/types'
 import { api } from '../api'
@@ -17,6 +19,7 @@ import {
   type SidebarFilter,
 } from '../store'
 import { SessionSidebar } from './SessionSidebar'
+import { AssigneeFilterButton } from './AssigneeFilter'
 
 const NO_BOARD_STATUS = '__no_board_status__'
 
@@ -34,11 +37,12 @@ function ConversationsSidebar(): React.JSX.Element {
   const selected = useStore((state) => state.selectedNodeId)
   const filters = useStore((state) => state.conversationFilters)
   const toggleFilter = useStore((state) => state.toggleConversationFilter)
+  const assigneeFilter = useStore((state) => state.assigneeFilter)
   const login = useStore((state) => state.auth?.login)
   const selectIssue = useStore((state) => state.selectIssue)
   const selectPullRequest = useStore((state) => state.selectPullRequest)
   const visible = rows.filter((row) =>
-    filters.every((filter) => matchesConversationFilter(row, filter, login)),
+    filters.every((filter) => matchesConversationFilter(row, filter, login, assigneeFilter)),
   )
 
   return (
@@ -51,7 +55,7 @@ function ConversationsSidebar(): React.JSX.Element {
       </div>
       <FilterArea>
         <div className="flex flex-wrap gap-1">
-          {(['unread', 'unreplied', 'assigned', 'starred'] as const).map((filter) => (
+          {(['unread', 'unreplied'] as const).map((filter) => (
             <FilterPill
               key={filter}
               label={filter}
@@ -60,6 +64,17 @@ function ConversationsSidebar(): React.JSX.Element {
               onClick={() => toggleFilter(filter)}
             />
           ))}
+          <AssigneeFilterButton
+            rows={rows}
+            active={filters.includes('assigned')}
+            onToggle={() => toggleFilter('assigned')}
+          />
+          <FilterPill
+            label="starred"
+            count={rows.filter((row) => isStarred(row)).length}
+            active={filters.includes('starred')}
+            onClick={() => toggleFilter('starred')}
+          />
         </div>
       </FilterArea>
       <div className="flex-1 overflow-y-auto">
@@ -97,6 +112,7 @@ function ConversationSidebar({ kind }: { kind: ConversationKind }): React.JSX.El
   const workflowStatusFilter = useStore((state) => state.workflowStatusFilter)
   const pullRequestFilters = useStore((state) => state.pullRequestFilters)
   const pullRequestStateFilter = useStore((state) => state.pullRequestStateFilter)
+  const assigneeFilter = useStore((state) => state.assigneeFilter)
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<CachedRow[]>([])
   const [searchLoading, setSearchLoading] = useState(false)
@@ -104,8 +120,8 @@ function ConversationSidebar({ kind }: { kind: ConversationKind }): React.JSX.El
   const searching = !!searchQuery.trim()
   const visible =
     kind === 'issue'
-      ? filterIssues(rows, issueFilters, workflowStatusFilter, login)
-      : filterPullRequests(rows, pullRequestFilters, pullRequestStateFilter, login)
+      ? filterIssues(rows, issueFilters, workflowStatusFilter, assigneeFilter, login)
+      : filterPullRequests(rows, pullRequestFilters, pullRequestStateFilter, assigneeFilter, login)
 
   useEffect(() => {
     const query = searchQuery.trim()
@@ -270,7 +286,7 @@ function IssueFilters({ rows }: { rows: CachedRow[] }): React.JSX.Element {
   return (
     <FilterArea>
       <div className="flex flex-wrap gap-1">
-        {(['unread', 'unreplied', 'assigned', 'starred'] as const).map((filter) => (
+        {(['unread', 'unreplied'] as const).map((filter) => (
           <FilterPill
             key={filter}
             label={filter}
@@ -279,6 +295,17 @@ function IssueFilters({ rows }: { rows: CachedRow[] }): React.JSX.Element {
             onClick={() => toggleFilter(filter)}
           />
         ))}
+        <AssigneeFilterButton
+          rows={rows}
+          active={filters.includes('assigned')}
+          onToggle={() => toggleFilter('assigned')}
+        />
+        <FilterPill
+          label="starred"
+          count={rows.filter((row) => isStarred(row)).length}
+          active={filters.includes('starred')}
+          onClick={() => toggleFilter('starred')}
+        />
       </div>
       <select
         aria-label="Filter by board status"
@@ -305,10 +332,11 @@ function PullRequestFilters({ rows }: { rows: CachedRow[] }): React.JSX.Element 
   const toggleFilter = useStore((state) => state.togglePullRequestFilter)
   const stateFilter = useStore((state) => state.pullRequestStateFilter)
   const setStateFilter = useStore((state) => state.setPullRequestStateFilter)
+  const assigneeFilter = useStore((state) => state.assigneeFilter)
   const login = useStore((state) => state.auth?.login)
   const passes: Record<PullRequestFilter, (row: CachedRow) => boolean> = {
     reviewRequested: (row) => includesLogin(row.reviewRequestedFrom, login),
-    assigned: (row) => includesLogin(row.assignees, login),
+    assigned: (row) => matchesAssigneeFilter(row, assigneeFilter, login),
     authored: (row) => row.author?.toLowerCase() === login?.toLowerCase(),
     olderThan7Days: (row) => isOlderThanSevenDays(row),
     unsolicited: isUnsolicitedPullRequest,
@@ -324,16 +352,21 @@ function PullRequestFilters({ rows }: { rows: CachedRow[] }): React.JSX.Element 
   return (
     <FilterArea>
       <div className="flex flex-wrap gap-1">
-        {(['reviewRequested', 'assigned', 'authored', 'olderThan7Days', 'unsolicited', 'starred'] as const).map((filter) => (
+        <FilterPill
+          label="review requested"
+          count={rows.filter(passes.reviewRequested).length}
+          active={filters.includes('reviewRequested')}
+          onClick={() => toggleFilter('reviewRequested')}
+        />
+        <AssigneeFilterButton
+          rows={rows}
+          active={filters.includes('assigned')}
+          onToggle={() => toggleFilter('assigned')}
+        />
+        {(['authored', 'olderThan7Days', 'unsolicited', 'starred'] as const).map((filter) => (
           <FilterPill
             key={filter}
-            label={
-              filter === 'reviewRequested'
-                ? 'review requested'
-                : filter === 'olderThan7Days'
-                  ? 'older than 7d'
-                  : filter
-            }
+            label={filter === 'olderThan7Days' ? 'older than 7d' : filter}
             count={rows.filter(passes[filter]).length}
             active={filters.includes(filter)}
             onClick={() => toggleFilter(filter)}
@@ -371,11 +404,12 @@ function filterIssues(
   rows: CachedRow[],
   filters: SidebarFilter[],
   statusFilter: string | null,
+  assigneeFilter: AssigneeFilter,
   login?: string,
 ): CachedRow[] {
   return rows.filter(
     (row) =>
-      filters.every((filter) => matchesConversationFilter(row, filter, login)) &&
+      filters.every((filter) => matchesConversationFilter(row, filter, login, assigneeFilter)) &&
       (statusFilter === null ||
         (statusFilter === NO_BOARD_STATUS ? !row.workflowStatus : row.workflowStatus === statusFilter)),
   )
@@ -385,11 +419,12 @@ function filterPullRequests(
   rows: CachedRow[],
   filters: PullRequestFilter[],
   stateFilter: PullRequestStateFilter | null,
+  assigneeFilter: AssigneeFilter,
   login?: string,
 ): CachedRow[] {
   const passes: Record<PullRequestFilter, (row: CachedRow) => boolean> = {
     reviewRequested: (row) => includesLogin(row.reviewRequestedFrom, login),
-    assigned: (row) => includesLogin(row.assignees, login),
+    assigned: (row) => matchesAssigneeFilter(row, assigneeFilter, login),
     authored: (row) => row.author?.toLowerCase() === login?.toLowerCase(),
     olderThan7Days: (row) => isOlderThanSevenDays(row),
     unsolicited: isUnsolicitedPullRequest,

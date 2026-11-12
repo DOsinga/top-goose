@@ -13,7 +13,7 @@ import type {
   SessionHistoryRow,
   SidebarView,
 } from '../../shared/types'
-import type { AttentionFilter, ConversationFilter } from '../../shared/issueFilters'
+import type { AssigneeFilter, AttentionFilter, ConversationFilter } from '../../shared/issueFilters'
 import { api } from './api'
 
 export type ComposerState = {
@@ -58,6 +58,7 @@ export type State = {
   sidebarFilters: SidebarFilter[]
   conversationFilters: SidebarFilter[]
   gooseFilters: AttentionFilter[]
+  assigneeFilter: AssigneeFilter
   workflowStatusFilter: string | null
   pullRequestFilters: PullRequestFilter[]
   pullRequestStateFilter: PullRequestStateFilter | null
@@ -112,6 +113,8 @@ export type State = {
   toggleSidebarFilter: (filter: SidebarFilter) => void
   toggleConversationFilter: (filter: SidebarFilter) => void
   toggleGooseFilter: (filter: AttentionFilter) => void
+  setAssigneeFilter: (filter: AssigneeFilter) => void
+  chooseAssigneeFilter: (filter: AssigneeFilter) => void
   setWorkflowStatusFilter: (status: string | null) => void
   setSidebarView: (view: SidebarView) => void
   togglePullRequestFilter: (filter: PullRequestFilter) => void
@@ -143,6 +146,7 @@ export const useStore = create<State>((set, get) => ({
   sidebarFilters: [],
   conversationFilters: [],
   gooseFilters: [],
+  assigneeFilter: 'viewer',
   workflowStatusFilter: null,
   pullRequestFilters: [],
   pullRequestStateFilter: null,
@@ -195,6 +199,7 @@ export const useStore = create<State>((set, get) => ({
           sessionRowsError: null,
           conversationFilters: [],
           gooseFilters: [],
+          assigneeFilter: 'viewer',
           workflowStatusFilter: null,
           pullRequestFilters: [],
           pullRequestStateFilter: null,
@@ -864,6 +869,7 @@ export const useStore = create<State>((set, get) => ({
         sessionRowsError: null,
         conversationFilters: [],
         gooseFilters: [],
+        assigneeFilter: 'viewer',
         workflowStatusFilter: null,
         pullRequestFilters: [],
         pullRequestStateFilter: null,
@@ -904,6 +910,39 @@ export const useStore = create<State>((set, get) => ({
         ? state.gooseFilters.filter((value) => value !== filter)
         : [...state.gooseFilters, filter],
     })),
+  setAssigneeFilter: (assigneeFilter) => set({ assigneeFilter }),
+  chooseAssigneeFilter: (assigneeFilter) => {
+    const view = get().sidebarView
+    if (view === 'issue') {
+      set((state) => ({
+        assigneeFilter,
+        sidebarFilters: state.sidebarFilters.includes('assigned')
+          ? state.sidebarFilters
+          : [...state.sidebarFilters, 'assigned'],
+      }))
+    } else if (view === 'pullRequest') {
+      set((state) => ({
+        assigneeFilter,
+        pullRequestFilters: state.pullRequestFilters.includes('assigned')
+          ? state.pullRequestFilters
+          : [...state.pullRequestFilters, 'assigned'],
+      }))
+    } else if (view === 'conversations') {
+      set((state) => ({
+        assigneeFilter,
+        conversationFilters: state.conversationFilters.includes('assigned')
+          ? state.conversationFilters
+          : [...state.conversationFilters, 'assigned'],
+      }))
+    } else {
+      set((state) => ({
+        assigneeFilter,
+        gooseFilters: state.gooseFilters.includes('assigned')
+          ? state.gooseFilters
+          : [...state.gooseFilters, 'assigned'],
+      }))
+    }
+  },
   setWorkflowStatusFilter: (workflowStatusFilter) => set({ workflowStatusFilter }),
   setSidebarView: (sidebarView) => {
     if (sidebarView === 'sessions' || sidebarView === 'conversations') {
