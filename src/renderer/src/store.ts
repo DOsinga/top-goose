@@ -93,8 +93,10 @@ export type State = {
   goForward: () => Promise<void>
   refreshIssue: () => Promise<void>
   refreshPullRequest: () => Promise<void>
-  reply: () => Promise<void>
-  replyToPullRequest: () => Promise<void>
+  reply: () => Promise<boolean>
+  replyAndClose: () => Promise<void>
+  replyToPullRequest: () => Promise<boolean>
+  replyAndClosePullRequest: () => Promise<void>
   closeIssue: () => Promise<void>
   approvePullRequest: () => Promise<void>
   closePullRequest: () => Promise<void>
@@ -468,11 +470,11 @@ export const useStore = create<State>((set, get) => ({
   reply: async () => {
     const { selectedNodeId, composers, issue } = get()
     const generation = get().generation
-    if (!selectedNodeId || !issue || issue.nodeId !== selectedNodeId) return
+    if (!selectedNodeId || !issue || issue.nodeId !== selectedNodeId) return false
     const composer = composers[selectedNodeId] ?? emptyComposer
-    if (composer.sending) return
+    if (composer.sending) return false
     const body = composer.text.trim()
-    if (!body) return
+    if (!body) return false
     set({
       composers: {
         ...composers,
@@ -498,6 +500,7 @@ export const useStore = create<State>((set, get) => ({
                   : state.issue,
             },
       )
+      return true
     } catch (err) {
       set((state) =>
         state.generation !== generation
@@ -513,17 +516,23 @@ export const useStore = create<State>((set, get) => ({
               },
             },
       )
+      return false
     }
+  },
+
+  replyAndClose: async () => {
+    const nodeId = get().selectedNodeId
+    if (await get().reply() && get().selectedNodeId === nodeId) await get().closeIssue()
   },
 
   replyToPullRequest: async () => {
     const { selectedNodeId, composers, pullRequest } = get()
     const generation = get().generation
-    if (!selectedNodeId || !pullRequest || pullRequest.nodeId !== selectedNodeId) return
+    if (!selectedNodeId || !pullRequest || pullRequest.nodeId !== selectedNodeId) return false
     const composer = composers[selectedNodeId] ?? emptyComposer
-    if (composer.sending) return
+    if (composer.sending) return false
     const body = composer.text.trim()
-    if (!body) return
+    if (!body) return false
     set({
       composers: {
         ...composers,
@@ -549,6 +558,7 @@ export const useStore = create<State>((set, get) => ({
                   : state.pullRequest,
             },
       )
+      return true
     } catch (err) {
       set((state) =>
         state.generation !== generation
@@ -564,6 +574,14 @@ export const useStore = create<State>((set, get) => ({
               },
             },
       )
+      return false
+    }
+  },
+
+  replyAndClosePullRequest: async () => {
+    const nodeId = get().selectedNodeId
+    if (await get().replyToPullRequest() && get().selectedNodeId === nodeId) {
+      await get().closePullRequest()
     }
   },
 
