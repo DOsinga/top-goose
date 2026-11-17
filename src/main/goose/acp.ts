@@ -1,5 +1,7 @@
 import { ChildProcess, spawn } from 'node:child_process'
+import path from 'node:path'
 import { createInterface } from 'node:readline'
+import { getLoginShellPath } from '../loginShellPath'
 import { findGoose } from './discover'
 
 /**
@@ -90,11 +92,15 @@ export class AcpClient {
 
   private async start(): Promise<void> {
     const goose = await findGoose()
+    const loginShellPath = await getLoginShellPath()
     const child = spawn(goose.resolvedPath, ['acp'], {
       stdio: ['pipe', 'pipe', 'pipe'],
       env: {
         ...process.env,
         GOOSE_MODE: 'auto',
+        PATH: [loginShellPath, process.env.PATH, path.dirname(goose.resolvedPath)]
+          .filter(Boolean)
+          .join(path.delimiter),
       },
     })
     this.child = child
